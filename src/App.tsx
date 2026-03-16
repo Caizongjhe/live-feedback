@@ -812,8 +812,8 @@ export default function App() {
       {teacherAuthMode === 'login' && (
         <form onSubmit={handleTeacherLogin} className="flex flex-col">
           <ShieldCheck className="w-16 h-16 text-indigo-500 mb-4 mx-auto" />
-          <h3 className="text-2xl font-black text-slate-800 mb-2 text-center">系統大廳登入</h3>
-          <p className="text-sm text-slate-500 text-center mb-6">歡迎回到 LiveFeedback</p>
+          <h3 className="text-2xl font-black text-slate-800 mb-2 text-center">系統大廳</h3>
+          <p className="text-sm text-slate-500 text-center mb-6">歡迎使用 LiveFeedback</p>
           
           {authSuccess && <p className="text-emerald-500 text-sm mb-4 font-bold text-center bg-emerald-50 py-2 rounded-lg">{authSuccess}</p>}
           {authError && <p className="text-rose-500 text-sm mb-4 font-bold text-center bg-rose-50 py-2 rounded-lg">{authError}</p>}
@@ -1004,8 +1004,8 @@ export default function App() {
           <div className="absolute inset-0 flex items-center justify-center bg-slate-900 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-slate-700 via-slate-900 to-black p-4 animate-in fade-in duration-500">
              <div className="flex flex-col items-center">
                 <h1 className="text-3xl md:text-5xl font-black text-white mb-8 tracking-widest drop-shadow-lg text-center leading-tight">
-                  準備好進行互動了嗎？<br/>
-                  <span className="text-indigo-400 text-2xl md:text-3xl font-bold">請登入您的專屬教室</span>
+                LiveFeedback<br/>
+                  <span className="text-indigo-400 text-2xl md:text-3xl font-bold">即時雲端互動</span>
                 </h1>
                 {renderAuthForms()}
              </div>
@@ -1035,7 +1035,7 @@ export default function App() {
             {showEnlargedQR && activeStudentUrl && (
               <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-lg animate-in fade-in" onClick={() => setShowEnlargedQR(false)}>
                 <div className="bg-white/90 p-8 md:p-12 rounded-[3rem] shadow-[0_0_100px_rgba(255,255,255,0.2)] flex flex-col items-center" onClick={e => e.stopPropagation()}>
-                  <h2 className="text-3xl md:text-4xl font-black text-slate-800 mb-8 tracking-widest">掃描加入【您的專屬教室】</h2>
+                  <h2 className="text-3xl md:text-4xl font-black text-slate-800 mb-8 tracking-widest">掃描加入【即時雲端互動】</h2>
                   <div className="p-4 rounded-3xl shadow-inner bg-slate-100 border-8 border-slate-200">
                     <img src={`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(activeStudentUrl)}`} alt="Enlarged QR" className="w-64 h-64 md:w-96 md:h-96" />
                   </div>
