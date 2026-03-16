@@ -292,7 +292,7 @@ export default function App() {
               countsObj[data.choice] = (countsObj[data.choice] || 0) + 1;
             }
           }
-          totalCount++; // 以參與的「人數」作為總數計算基準
+          totalCount++; 
           if (doc.id === user.uid) userVoted = data.choice;
         }
       });
@@ -1022,7 +1022,7 @@ export default function App() {
             {showEnlargedQR && activeStudentUrl && (
               <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-lg animate-in fade-in" onClick={() => setShowEnlargedQR(false)}>
                 <div className="bg-white/90 p-8 md:p-12 rounded-[3rem] shadow-[0_0_100px_rgba(255,255,255,0.2)] flex flex-col items-center" onClick={e => e.stopPropagation()}>
-                  <h2 className="text-3xl md:text-4xl font-black text-slate-800 mb-8 tracking-widest">掃描加入【即時雲端互動】</h2>
+                  <h2 className="text-3xl md:text-4xl font-black text-slate-800 mb-8 tracking-widest">掃描加入【您的專屬教室】</h2>
                   <div className="p-4 rounded-3xl shadow-inner bg-slate-100 border-8 border-slate-200">
                     <img src={`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(activeStudentUrl)}`} alt="Enlarged QR" className="w-64 h-64 md:w-96 md:h-96" />
                   </div>
@@ -1456,19 +1456,19 @@ export default function App() {
                         </h3>
                         
                         {activePollId && currentActivePollData ? (
-                          <div className="animate-in fade-in flex flex-col h-full">
-                            <span className={`inline-block px-2 py-1 text-[10px] font-bold rounded mb-2 tracking-widest w-fit ${currentActivePollData.type === 'vote' ? 'bg-purple-100 text-purple-700' : currentActivePollData.type === 'quiz' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                          <div className="animate-in fade-in flex flex-col gap-4">
+                            <span className={`inline-block px-2 py-1 text-[10px] font-bold rounded tracking-widest w-fit ${currentActivePollData.type === 'vote' ? 'bg-purple-100 text-purple-700' : currentActivePollData.type === 'quiz' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
                               {currentActivePollData.type === 'vote' ? '📊 投票模式' : currentActivePollData.type === 'quiz' ? (currentActivePollData.isMultiple ? '📝 選擇模式 (複選)' : '📝 選擇模式 (單選)') : '⚔️ 拔河模式'}
                             </span>
-                            <div className={`text-lg font-black mb-2 leading-snug break-words ${currentActivePollData.type === 'vote' ? 'text-purple-900' : currentActivePollData.type === 'quiz' ? 'text-emerald-900' : 'text-rose-900'}`}>{String(currentActivePollData.title)}</div>
+                            <div className={`text-lg font-black leading-snug break-words ${currentActivePollData.type === 'vote' ? 'text-purple-900' : currentActivePollData.type === 'quiz' ? 'text-emerald-900' : 'text-rose-900'}`}>{String(currentActivePollData.title)}</div>
                             
                             {currentActivePollData.type === 'poll' ? (
-                              <div className="flex justify-between text-xs font-bold bg-slate-50 p-2 rounded-lg mb-4 border border-slate-100">
+                              <div className="flex justify-between text-xs font-bold bg-slate-50 p-2 rounded-lg border border-slate-100">
                                 <span className="text-blue-600 truncate mr-2">{String(currentActivePollData.optA || '')}</span>
                                 <span className="text-rose-600 truncate">{String(currentActivePollData.optB || '')}</span>
                               </div>
                             ) : (
-                              <div className="flex flex-col gap-1 text-xs font-bold bg-slate-50 p-2 rounded-lg mb-4 border border-slate-100">
+                              <div className="flex flex-col gap-1 text-xs font-bold bg-slate-50 p-2 rounded-lg border border-slate-100">
                                  {Array.isArray(currentActivePollData.options) ? currentActivePollData.options.map((opt, i) => (
                                     <div key={i} className="flex justify-between">
                                       <span className="text-slate-600 truncate pr-2">{String(opt)}</span>
@@ -1478,7 +1478,7 @@ export default function App() {
                               </div>
                             )}
 
-                            <div className={`border rounded-xl p-3 mb-4 text-center shadow-inner flex flex-col items-center justify-center ${currentActivePollData.type === 'vote' ? 'bg-purple-50 border-purple-100' : currentActivePollData.type === 'quiz' ? 'bg-emerald-50 border-emerald-100' : 'bg-rose-50 border-rose-100'}`}>
+                            <div className={`border rounded-xl p-3 text-center shadow-inner flex flex-col items-center justify-center ${currentActivePollData.type === 'vote' ? 'bg-purple-50 border-purple-100' : currentActivePollData.type === 'quiz' ? 'bg-emerald-50 border-emerald-100' : 'bg-rose-50 border-rose-100'}`}>
                               <span className={`text-xs font-bold block mb-1 ${currentActivePollData.type === 'vote' ? 'text-purple-400' : currentActivePollData.type === 'quiz' ? 'text-emerald-400' : 'text-rose-400'}`}>目前已收集 / 在線總人數</span>
                               <div className="flex items-baseline gap-2">
                                 <span className={`text-3xl font-black ${currentActivePollData.type === 'vote' ? 'text-purple-600' : currentActivePollData.type === 'quiz' ? 'text-emerald-600' : 'text-rose-600'}`}>{pollVotes.total} <span className="text-sm">人參與</span></span>
@@ -1487,20 +1487,20 @@ export default function App() {
                             </div>
                             
                             {pollState === 'voting' ? (
-                              <button onClick={handleRevealPoll} className="w-full mt-auto bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl text-sm transition-colors flex items-center justify-center gap-2 shadow-md">
+                              <button onClick={handleRevealPoll} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl text-sm transition-colors flex items-center justify-center gap-2 shadow-md mt-1">
                                 <Play className="w-4 h-4 fill-current"/> {currentActivePollData.type === 'poll' ? '開始拔河 (觸發動畫並揭曉)' : '開始結算 (觸發動畫並揭曉)'}
                               </button>
                             ) : (
-                              <button onClick={handleStopPoll} className={`w-full mt-auto font-bold py-3 rounded-xl text-sm transition-colors flex items-center justify-center gap-2 ${currentActivePollData.type === 'vote' ? 'bg-purple-100 hover:bg-purple-200 text-purple-700' : currentActivePollData.type === 'quiz' ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700' : 'bg-rose-100 hover:bg-rose-200 text-rose-700'}`}>
+                              <button onClick={handleStopPoll} className={`w-full font-bold py-3 rounded-xl text-sm transition-colors flex items-center justify-center gap-2 mt-1 ${currentActivePollData.type === 'vote' ? 'bg-purple-100 hover:bg-purple-200 text-purple-700' : currentActivePollData.type === 'quiz' ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700' : 'bg-rose-100 hover:bg-rose-200 text-rose-700'}`}>
                                 <Square className="w-4 h-4 fill-current"/> 關閉結果與模式
                               </button>
                             )}
                           </div>
                         ) : currentTopic ? (
-                          <div className="animate-in fade-in">
-                            <span className="inline-block px-2 py-1 bg-indigo-100 text-indigo-700 text-[10px] font-bold rounded mb-2 tracking-widest w-fit">💬 留言模式</span>
-                            <div className="text-lg font-black text-indigo-900 mb-4 leading-tight min-h-[3rem] break-words">{String(currentTopic)}</div>
-                            <button onClick={() => handleSetTopic('')} className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-xl text-sm transition-colors">
+                          <div className="animate-in fade-in flex flex-col gap-4">
+                            <span className="inline-block px-2 py-1 bg-indigo-100 text-indigo-700 text-[10px] font-bold rounded tracking-widest w-fit">💬 留言模式</span>
+                            <div className="text-lg font-black text-indigo-900 leading-tight min-h-[3rem] break-words">{String(currentTopic)}</div>
+                            <button onClick={() => handleSetTopic('')} className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-xl text-sm transition-colors mt-1">
                               撤下話題
                             </button>
                           </div>
@@ -1563,12 +1563,9 @@ export default function App() {
                                          {editFormData.type === 'quiz' && (
                                            <div className="flex items-center justify-between bg-white p-2 rounded-lg border border-emerald-200 mb-1">
                                              <span className="text-xs font-bold text-slate-600">允許學生複選</span>
-                                             <label className="flex items-center cursor-pointer">
-                                               <div className="relative">
-                                                 <input type="checkbox" className="sr-only" checked={editFormData.isMultiple || false} onChange={() => setEditFormData({...editFormData, isMultiple: !editFormData.isMultiple})} />
-                                                 <div className={`block w-10 h-6 rounded-full transition-colors ${editFormData.isMultiple ? 'bg-emerald-500' : 'bg-slate-300'}`}></div>
-                                                 <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${editFormData.isMultiple ? 'transform translate-x-4' : ''}`}></div>
-                                               </div>
+                                             <label className="relative inline-flex items-center cursor-pointer">
+                                               <input type="checkbox" className="sr-only peer" checked={editFormData.isMultiple || false} onChange={() => setEditFormData({...editFormData, isMultiple: !editFormData.isMultiple})} />
+                                               <div className="w-8 h-4 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-500"></div>
                                              </label>
                                            </div>
                                          )}
@@ -1591,14 +1588,14 @@ export default function App() {
                                       <button onClick={saveEditing} className="flex-1 bg-amber-500 text-white font-bold py-2.5 rounded-lg text-sm hover:bg-amber-600 shadow-sm transition-colors">儲存變更</button>
                                     </div>
                                   </div>
-                                )
+                                );
                               }
 
                               return (
-                              <div key={item.id || idx} className={`flex flex-col gap-2 p-3 rounded-xl border transition-all ${isActive ? (item.type === 'poll' ? 'bg-rose-50 border-rose-200 shadow-sm' : (item.type === 'vote' ? 'bg-purple-50 border-purple-200 shadow-sm' : 'bg-indigo-50 border-indigo-200 shadow-sm')) : 'bg-slate-50 border-slate-100 hover:bg-white hover:shadow-sm group'}`}>
+                              <div key={item.id || idx} className={`flex flex-col gap-2 p-3 rounded-xl border transition-all ${isActive ? (item.type === 'poll' ? 'bg-rose-50 border-rose-200 shadow-sm' : item.type === 'vote' ? 'bg-purple-50 border-purple-200 shadow-sm' : item.type === 'quiz' ? 'bg-emerald-50 border-emerald-200 shadow-sm' : 'bg-indigo-50 border-indigo-200 shadow-sm') : 'bg-slate-50 border-slate-100 hover:bg-white hover:shadow-sm group'}`}>
                                 <div className="flex items-start justify-between gap-2">
                                   <p className="text-sm font-bold text-slate-700 leading-tight break-words flex items-start gap-2">
-                                    <span className="shrink-0 text-base">{item.type === 'text' ? '💬' : (item.type === 'poll' ? '⚔️' : '📊')}</span>
+                                    <span className="shrink-0 text-base">{item.type === 'text' ? '💬' : item.type === 'poll' ? '⚔️' : item.type === 'vote' ? '📊' : '📝'}</span>
                                     <span className="mt-0.5"><span className="text-slate-400 font-black mr-1">{idx + 1}.</span>{String(item.title || '')}</span>
                                   </p>
                                   <div className="flex flex-col gap-1 shrink-0 opacity-100 lg:opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1672,12 +1669,9 @@ export default function App() {
                              {newQuestionType === 'quiz' && (
                                <div className="flex items-center justify-between bg-slate-100/50 p-2 rounded-lg border border-slate-200">
                                  <span className="text-xs font-bold text-slate-600">允許學生複選</span>
-                                 <label className="flex items-center cursor-pointer">
-                                   <div className="relative">
-                                     <input type="checkbox" className="sr-only" checked={newIsMultiple} onChange={() => setNewIsMultiple(!newIsMultiple)} />
-                                     <div className={`block w-10 h-6 rounded-full transition-colors ${newIsMultiple ? 'bg-emerald-500' : 'bg-slate-300'}`}></div>
-                                     <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${newIsMultiple ? 'transform translate-x-4' : ''}`}></div>
-                                   </div>
+                                 <label className="relative inline-flex items-center cursor-pointer">
+                                   <input type="checkbox" className="sr-only peer" checked={newIsMultiple} onChange={() => setNewIsMultiple(!newIsMultiple)} />
+                                   <div className="w-8 h-4 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-500"></div>
                                  </label>
                                </div>
                              )}
@@ -1804,12 +1798,9 @@ export default function App() {
                                        {editFormData.type === 'quiz' && (
                                          <div className="flex items-center justify-between bg-white p-2 rounded-lg border border-emerald-200 mb-1">
                                            <span className="text-xs font-bold text-slate-600">允許學生複選</span>
-                                           <label className="flex items-center cursor-pointer">
-                                             <div className="relative">
-                                               <input type="checkbox" className="sr-only" checked={editFormData.isMultiple || false} onChange={() => setEditFormData({...editFormData, isMultiple: !editFormData.isMultiple})} />
-                                               <div className={`block w-10 h-6 rounded-full transition-colors ${editFormData.isMultiple ? 'bg-emerald-500' : 'bg-slate-300'}`}></div>
-                                               <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${editFormData.isMultiple ? 'transform translate-x-4' : ''}`}></div>
-                                             </div>
+                                           <label className="relative inline-flex items-center cursor-pointer">
+                                             <input type="checkbox" className="sr-only peer" checked={editFormData.isMultiple || false} onChange={() => setEditFormData({...editFormData, isMultiple: !editFormData.isMultiple})} />
+                                             <div className="w-8 h-4 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-500"></div>
                                            </label>
                                          </div>
                                        )}
@@ -1829,7 +1820,7 @@ export default function App() {
 
                                   <div className="flex gap-2 mt-1">
                                     <button onClick={cancelEditing} className="flex-1 bg-slate-200 text-slate-700 font-bold py-2.5 rounded-lg text-sm hover:bg-slate-300 transition-colors">取消</button>
-                                    <button onClick={saveEditing} className="flex-1 bg-amber-50 text-white font-bold py-2.5 rounded-lg text-sm hover:bg-amber-600 shadow-sm transition-colors">儲存變更</button>
+                                    <button onClick={saveEditing} className="flex-1 bg-amber-500 text-white font-bold py-2.5 rounded-lg text-sm hover:bg-amber-600 shadow-sm transition-colors">儲存變更</button>
                                   </div>
                                 </div>
                               );
@@ -1842,7 +1833,7 @@ export default function App() {
                                   <span className="shrink-0 text-base">{item.type === 'text' ? '💬' : item.type === 'poll' ? '⚔️' : item.type === 'vote' ? '📊' : '📝'}</span>
                                   <span className="mt-0.5"><span className="text-slate-400 font-black mr-1">{idx + 1}.</span>{String(item.title || '')}</span>
                                 </p>
-                                <div className="flex flex-col gap-1 shrink-0 opacity-100 transition-opacity">
+                                <div className="flex flex-col gap-1 shrink-0 opacity-100 lg:opacity-0 group-hover:opacity-100 transition-opacity">
                                   <button onClick={() => handleMoveQuestion(idx, -1)} disabled={idx === 0 || isActive} className="text-slate-400 hover:text-slate-700 disabled:opacity-30"><ChevronUp className="w-4 h-4"/></button>
                                   <button onClick={() => handleMoveQuestion(idx, 1)} disabled={idx === agenda.length - 1 || isActive} className="text-slate-400 hover:text-slate-700 disabled:opacity-30"><ChevronDown className="w-4 h-4"/></button>
                                 </div>
@@ -1913,12 +1904,9 @@ export default function App() {
                            {newQuestionType === 'quiz' && (
                              <div className="flex items-center justify-between bg-slate-100/50 p-2 rounded-lg border border-slate-200">
                                <span className="text-xs font-bold text-slate-600">允許學生複選</span>
-                               <label className="flex items-center cursor-pointer">
-                                 <div className="relative">
-                                   <input type="checkbox" className="sr-only" checked={newIsMultiple} onChange={() => setNewIsMultiple(!newIsMultiple)} />
-                                   <div className={`block w-10 h-6 rounded-full transition-colors ${newIsMultiple ? 'bg-emerald-500' : 'bg-slate-300'}`}></div>
-                                   <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${newIsMultiple ? 'transform translate-x-4' : ''}`}></div>
-                                 </div>
+                               <label className="relative inline-flex items-center cursor-pointer">
+                                 <input type="checkbox" className="sr-only peer" checked={newIsMultiple} onChange={() => setNewIsMultiple(!newIsMultiple)} />
+                                 <div className="w-8 h-4 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-500"></div>
                                </label>
                              </div>
                            )}
