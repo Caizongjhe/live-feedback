@@ -163,9 +163,11 @@ export default function App() {
         setActiveTeacherId(teacherParam);
         setViewMode('mobile');
       } else if (modeParam === 'teacher' && teacherParam) {
+        // 如果是要開啟遙控器，需先進入大廳登入
         setActiveTeacherId(teacherParam);
         setViewMode('lobby'); 
       } else {
+        // 無參數或參數不齊全，一律回到登入大廳
         setViewMode('lobby');
       }
 
@@ -752,28 +754,29 @@ export default function App() {
   };
 
   // ==========================================
-  // 畫面輔助邏輯
+  // 畫面輔助邏輯 (更新：絕對數值漸進式放大與階層顏色)
   // ==========================================
-  const maxLikes = useMemo(() => Math.max(...messages.map(m => m.likes), 0), [messages]);
-  const getHeatScore = (likes) => {
-    if (likes === 0) return 0;
-    return (Math.min(likes / 25, 1) * 0.3) + ((likes / Math.max(maxLikes, 1)) * 0.7);
+  const getFontSize = (likes) => {
+    // 基礎大小調大為 1.5rem (約 24px)，使教室後方學生也容易看見。
+    // 讚數 1~10 時穩定線性放大，超過 10 讚後縮小放大倍率，避免無限膨脹。
+    const scalingLike = likes <= 10 ? likes : 10 + (likes - 10) * 0.2;
+    return `clamp(1.5rem, 1.5rem + ${scalingLike * 0.4}vw, 5.5rem)`;
   };
-  const getFontSize = (likes) => `clamp(1rem, 1rem + ${getHeatScore(likes) * 3.5}vw, 4.5rem)`;
   
   const getColorClass = (likes, theme = 'dark') => {
-    const score = getHeatScore(likes);
     if (theme === 'dark') {
-      if (score >= 0.8) return 'text-rose-500 font-black drop-shadow-[0_0_15px_rgba(244,63,94,0.5)]';
-      if (score >= 0.6) return 'text-amber-500 font-bold drop-shadow-[0_0_10px_rgba(245,158,11,0.4)]';
-      if (score >= 0.35) return 'text-emerald-400 font-bold';
-      if (score >= 0.1) return 'text-indigo-400 font-medium';
+      if (likes >= 10) return 'text-rose-500 font-black drop-shadow-[0_0_15px_rgba(244,63,94,0.6)]';
+      if (likes >= 7) return 'text-orange-400 font-black drop-shadow-[0_0_10px_rgba(251,146,60,0.5)]';
+      if (likes >= 5) return 'text-amber-400 font-bold drop-shadow-[0_0_8px_rgba(251,191,36,0.4)]';
+      if (likes >= 3) return 'text-emerald-400 font-semibold';
+      if (likes >= 1) return 'text-indigo-300 font-medium';
       return 'text-slate-400 font-normal';
     } else {
-      if (score >= 0.8) return 'text-rose-600 font-black drop-shadow-[0_4px_12px_rgba(225,29,72,0.3)]';
-      if (score >= 0.6) return 'text-orange-500 font-bold drop-shadow-[0_3px_8px_rgba(249,115,22,0.3)]';
-      if (score >= 0.35) return 'text-emerald-600 font-bold';
-      if (score >= 0.1) return 'text-indigo-600 font-medium';
+      if (likes >= 10) return 'text-rose-600 font-black drop-shadow-[0_4px_12px_rgba(225,29,72,0.4)]';
+      if (likes >= 7) return 'text-orange-500 font-black drop-shadow-[0_3px_8px_rgba(249,115,22,0.3)]';
+      if (likes >= 5) return 'text-amber-500 font-bold drop-shadow-[0_3px_6px_rgba(245,158,11,0.3)]';
+      if (likes >= 3) return 'text-emerald-600 font-semibold';
+      if (likes >= 1) return 'text-indigo-600 font-medium';
       return 'text-slate-500 font-normal';
     }
   };
