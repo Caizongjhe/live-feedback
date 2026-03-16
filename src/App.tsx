@@ -367,7 +367,7 @@ export default function App() {
       
       const newCode = Math.floor(100000 + Math.random() * 900000).toString();
       
-      // EmailJS 寄發驗證信邏輯
+      // EmailJS 寄發驗證信邏輯 (改為直接透過 Fetch API)
       if (EMAILJS_SERVICE_ID !== "YOUR_SERVICE_ID") {
         try {
           const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
@@ -387,13 +387,16 @@ export default function App() {
           });
 
           if (!response.ok) {
-            throw new Error(`EmailJS API error: ${response.status}`);
+            // 抓取 EmailJS 官方回傳的真實錯誤原因
+            const errorText = await response.text();
+            throw new Error(errorText);
           }
           
           setAuthSuccess(`驗證碼已發送至 ${authEmail}`);
         } catch (emailErr) {
           console.error("EmailJS 錯誤:", emailErr);
-          setAuthError('郵件發送失敗，請檢查 EmailJS 設定');
+          // 將真實原因顯示在畫面上！
+          setAuthError(`信件失敗：${emailErr.message}`);
           return;
         }
       } else {
@@ -984,7 +987,7 @@ export default function App() {
               ) : (
                 <div className="flex-1 bg-slate-100 p-4 overflow-y-auto flex flex-col gap-4 pb-10">
                   
-                  {/* 控制面板：清空教室與新增題目 (已補回) */}
+                  {/* 控制面板：清空教室與新增題目 */}
                   <div className="grid grid-cols-2 gap-3 mt-2">
                      <button onClick={() => setShowNewClassModal(true)} className="bg-white border-2 border-indigo-100 hover:border-indigo-300 text-indigo-700 font-bold py-3 rounded-2xl flex justify-center items-center gap-2 shadow-sm transition-all"><Plus className="w-5 h-5"/> 新增題目</button>
                      <button onClick={() => setShowClearModal(true)} className="bg-white border-2 border-rose-100 hover:border-rose-300 text-rose-700 font-bold py-3 rounded-2xl flex justify-center items-center gap-2 shadow-sm transition-all"><Trash2 className="w-5 h-5"/> 清空教室</button>
@@ -1039,7 +1042,7 @@ export default function App() {
                 </div>
               )}
 
-              {/* ===== 教官功能 Modal 區塊 (已補回) ===== */}
+              {/* ===== 教官功能 Modal 區塊 ===== */}
 
               {/* 1. 清空教室確認 Modal */}
               {showClearModal && (
