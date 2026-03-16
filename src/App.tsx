@@ -3,7 +3,7 @@ import {
   ThumbsUp, Send, Maximize2, Smartphone, Trash2, QrCode, User, Ghost, 
   MessageSquare, Loader2, Key, Plus, X, ShieldCheck, MonitorPlay, 
   AlertTriangle, Users, Link, Bell, Sun, Moon, Swords, ChevronUp, ChevronDown, Play, Square, CircleDashed, BarChart3,
-  Mail, Lock, ShieldQuestion, UserPlus, ArrowLeft, LogOut, Edit
+  Mail, Lock, ShieldQuestion, UserPlus, ArrowLeft, LogOut, Edit, CheckSquare
 } from 'lucide-react';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
@@ -72,9 +72,9 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   
-  // 系統視圖控制 ('lobby' 為起始畫面, 'projector' 為大白板, 'mobile' 為學生端, 'teacher' 為遙控器)
+  // 系統視圖控制
   const [viewMode, setViewMode] = useState('lobby'); 
-  const [activeTeacherId, setActiveTeacherId] = useState(null); // 用於多教室隔離
+  const [activeTeacherId, setActiveTeacherId] = useState(null); 
 
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
@@ -94,7 +94,7 @@ export default function App() {
   const [agenda, setAgenda] = useState([]); 
   const [activePoll, setActivePoll] = useState(null); 
   
-  // 拔河對決與投票狀態
+  // 拔河與投票狀態
   const [activePollId, setActivePollId] = useState(null); 
   const [pollState, setPollState] = useState('voting'); 
   const [pollVotes, setPollVotes] = useState({ A: 0, B: 0, counts: {}, total: 0 }); 
@@ -132,12 +132,14 @@ export default function App() {
   const [verifyCountdown, setVerifyCountdown] = useState(0);
   const [simulatedEmailToast, setSimulatedEmailToast] = useState('');
 
-  // 新增/編輯題目表單狀態
+  // 新增/編輯題目表單狀態 (加入 isMultiple 支援選擇題)
   const [newQuestionType, setNewQuestionType] = useState('text'); 
   const [newQuestionTitle, setNewQuestionTitle] = useState('');
   const [newQuestionOptA, setNewQuestionOptA] = useState('');
   const [newQuestionOptB, setNewQuestionOptB] = useState('');
   const [newVoteOptions, setNewVoteOptions] = useState(['', '', '', '']); 
+  const [newIsMultiple, setNewIsMultiple] = useState(false);
+
   const [editingQuestionId, setEditingQuestionId] = useState(null);
   const [editFormData, setEditFormData] = useState({});
 
@@ -163,11 +165,9 @@ export default function App() {
         setActiveTeacherId(teacherParam);
         setViewMode('mobile');
       } else if (modeParam === 'teacher' && teacherParam) {
-        // 如果是要開啟遙控器，需先進入大廳登入
         setActiveTeacherId(teacherParam);
         setViewMode('lobby'); 
       } else {
-        // 無參數或參數不齊全，一律回到登入大廳
         setViewMode('lobby');
       }
 
@@ -186,7 +186,6 @@ export default function App() {
     }
   }, []);
 
-  // 動態生成帶有 activeTeacherId 的 QR Code URL
   const activeStudentUrl = baseHref && currentSessionId && activeTeacherId ? `${baseHref}?mode=mobile&teacher=${activeTeacherId}&session=${currentSessionId}` : '';
   const activeTeacherUrl = baseHref && activeTeacherId ? `${baseHref}?mode=teacher&teacher=${activeTeacherId}` : '';
 
@@ -198,7 +197,7 @@ export default function App() {
           try {
             await signInWithCustomToken(auth, __initial_auth_token);
           } catch (tokenError) {
-            console.warn("自訂 Token 驗證失敗 (可能因使用了自訂的 Firebase 專案設定)，自動切換為匿名登入:", tokenError);
+            console.warn("自訂 Token 驗證失敗，自動切換為匿名登入:", tokenError);
             await signInAnonymously(auth);
           }
         } else {
@@ -215,7 +214,7 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // 3. 監聽留言 (多教室隔離)
+  // 3. 監聽留言
   useEffect(() => {
     if (authLoading || !user || !activeTeacherId) return;
     const msgsRef = collection(db, 'artifacts', appId, 'public', 'data', `${activeTeacherId}_messages`);
@@ -228,7 +227,7 @@ export default function App() {
     return () => unsubscribe();
   }, [user, authLoading, activeTeacherId]);
 
-  // 4. 監聽全域設定 (多教室隔離)
+  // 4. 監聽全域設定
   useEffect(() => {
     if (authLoading || !user || !activeTeacherId) return;
     const settingsRef = doc(db, 'artifacts', appId, 'public', 'data', `${activeTeacherId}_settings`, 'global');
@@ -255,7 +254,7 @@ export default function App() {
     return () => unsub();
   }, [user, authLoading, localInviteLink, activeTeacherId]);
 
-  // 4-1. 監聽教官個人題庫 (全域通用，只需信箱綁定)
+  // 4-1. 監聽教官個人題庫
   useEffect(() => {
     if (authLoading || !user || !loggedTeacherEmail) return;
     const teacherRef = doc(db, 'artifacts', appId, 'public', 'data', 'teacher_accounts', loggedTeacherEmail);
@@ -267,7 +266,7 @@ export default function App() {
     return () => unsub();
   }, [user, authLoading, loggedTeacherEmail]);
 
-  // 5. 監聽投票數據 (多教室隔離)
+  // 5. 監聽投票數據
   useEffect(() => {
     if (authLoading || !user || !activePollId || !activeTeacherId) {
       setPollVotes({ A: 0, B: 0, counts: {}, total: 0 });
@@ -287,9 +286,13 @@ export default function App() {
           if (data.choice === 'A') countA++;
           else if (data.choice === 'B') countB++;
           else {
-            countsObj[data.choice] = (countsObj[data.choice] || 0) + 1;
+            if (Array.isArray(data.choice)) {
+              data.choice.forEach(c => { countsObj[c] = (countsObj[c] || 0) + 1; });
+            } else if (data.choice != null) {
+              countsObj[data.choice] = (countsObj[data.choice] || 0) + 1;
+            }
           }
-          totalCount++;
+          totalCount++; // 以參與的「人數」作為總數計算基準
           if (doc.id === user.uid) userVoted = data.choice;
         }
       });
@@ -309,14 +312,14 @@ export default function App() {
       setIsTugAnimating(false); setShowResults(false); setRopePosition(50);
     } else if (pollState === 'revealed') {
       setIsTugAnimating(true); setShowResults(false); setRopePosition(50);
-      const waitTime = activePollTypeRef.current === 'vote' ? 2000 : 4000;
+      const waitTime = (activePollTypeRef.current === 'vote' || activePollTypeRef.current === 'quiz') ? 2000 : 4000;
 
       t1 = setTimeout(() => {
         setIsTugAnimating(false);
         t2 = setTimeout(() => {
           const votes = latestVotes.current;
           let target = 50;
-          if (votes.total > 0) {
+          if (votes.total > 0 && activePollTypeRef.current === 'poll') {
             const diffPercentage = ((votes.B - votes.A) / votes.total) * 35;
             target = Math.min(Math.max(50 + diffPercentage, 15), 85);
           }
@@ -328,7 +331,7 @@ export default function App() {
     return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [pollState]);
 
-  // 6. 心跳機制 (多教室隔離)
+  // 6. 心跳機制
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(Date.now()), 5000);
     return () => clearInterval(timer);
@@ -361,7 +364,7 @@ export default function App() {
   }, [activeUsers, currentTime]);
 
   // ==========================================
-  // 倒數計時器 (驗證碼)
+  // 倒數計時器
   // ==========================================
   useEffect(() => {
     let timer;
@@ -380,7 +383,7 @@ export default function App() {
   }, [simulatedEmailToast]);
 
   // ==========================================
-  // 互動與教官邏輯 (需加上 activeTeacherId 隔離)
+  // 互動邏輯
   // ==========================================
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -427,9 +430,10 @@ export default function App() {
 
   const startEditing = (item) => {
     let copy = JSON.parse(JSON.stringify(item)); 
-    if (copy.type === 'vote') {
+    if (copy.type === 'vote' || copy.type === 'quiz') {
       if (!copy.options) copy.options = [];
       while (copy.options.length < 4) copy.options.push(''); 
+      if (copy.type === 'quiz' && copy.isMultiple === undefined) copy.isMultiple = false;
     }
     setEditFormData(copy); setEditingQuestionId(item.id);
   };
@@ -442,7 +446,7 @@ export default function App() {
     if (editFormData.type === 'poll' && (!editFormData.optA.trim() || !editFormData.optB.trim())) return;
     
     let finalData = { ...editFormData };
-    if (finalData.type === 'vote') {
+    if (finalData.type === 'vote' || finalData.type === 'quiz') {
       finalData.options = finalData.options.map(o => o.trim()).filter(o => o);
       if (finalData.options.length < 2) return; 
     }
@@ -462,7 +466,7 @@ export default function App() {
   const validateNewQuestion = () => {
     if (!newQuestionTitle.trim()) return false;
     if (newQuestionType === 'poll' && (!newQuestionOptA.trim() || !newQuestionOptB.trim())) return false;
-    if (newQuestionType === 'vote' && newVoteOptions.filter(o => o.trim()).length < 2) return false;
+    if ((newQuestionType === 'vote' || newQuestionType === 'quiz') && newVoteOptions.filter(o => o.trim()).length < 2) return false;
     return true;
   };
 
@@ -470,13 +474,17 @@ export default function App() {
     const newItem = { id: 'q_' + Date.now(), type: newQuestionType, title: newQuestionTitle.trim() };
     if (newQuestionType === 'poll') {
       newItem.optA = newQuestionOptA.trim(); newItem.optB = newQuestionOptB.trim();
-    } else if (newQuestionType === 'vote') {
+    } else if (newQuestionType === 'vote' || newQuestionType === 'quiz') {
       newItem.options = newVoteOptions.map(o => o.trim()).filter(o => o);
+      if (newQuestionType === 'quiz') newItem.isMultiple = newIsMultiple;
     }
     return newItem;
   };
 
-  const resetForm = () => { setNewQuestionTitle(''); setNewQuestionOptA(''); setNewQuestionOptB(''); setNewVoteOptions(['', '', '', '']); };
+  const resetForm = () => { 
+    setNewQuestionTitle(''); setNewQuestionOptA(''); setNewQuestionOptB(''); 
+    setNewVoteOptions(['', '', '', '']); setNewIsMultiple(false);
+  };
 
   const handleAddQuestion = async (e) => {
     if(e) e.preventDefault();
@@ -491,7 +499,6 @@ export default function App() {
     if (!user || !activeTeacherId || !validateNewQuestion()) return;
     const newItem = buildNewItem();
     
-    // 不再更新 teacher_accounts 的 agenda，僅做直接發布大螢幕
     const globalRef = doc(db, 'artifacts', appId, 'public', 'data', `${activeTeacherId}_settings`, 'global');
     if (newQuestionType === 'text') {
        await updateDoc(globalRef, { currentTopic: newItem.title, activePollId: null, activePoll: null });
@@ -522,7 +529,7 @@ export default function App() {
     const globalRef = doc(db, 'artifacts', appId, 'public', 'data', `${activeTeacherId}_settings`, 'global');
     if (item.type === 'text') {
       await updateDoc(globalRef, { currentTopic: item.title, activePollId: null, activePoll: null });
-    } else if (item.type === 'poll' || item.type === 'vote') {
+    } else if (item.type === 'poll' || item.type === 'vote' || item.type === 'quiz') {
       await updateDoc(globalRef, { activePollId: item.id, currentTopic: '', pollState: 'voting', activePoll: item });
     }
   };
@@ -540,6 +547,7 @@ export default function App() {
   const handleCastVote = async (choice) => {
     if (!user || !activePollId || pollState !== 'voting' || !activeTeacherId) return;
     const voteRef = doc(db, 'artifacts', appId, 'public', 'data', `${activeTeacherId}_votes`, user.uid);
+    // choice 可能是字串 (單選/拔河) 或是字串陣列 (複選)
     await setDoc(voteRef, { pollId: activePollId, choice: choice, updatedAt: Date.now() }, { merge: true });
   };
 
@@ -553,7 +561,7 @@ export default function App() {
   };
 
   // ==========================================
-  // 教官登入與雙重驗證註冊邏輯 (結合 EmailJS)
+  // 教官登入註冊邏輯
   // ==========================================
   const switchAuthMode = (mode) => {
     setTeacherAuthMode(mode);
@@ -563,7 +571,6 @@ export default function App() {
     }
   };
 
-  // 寄送 Email 的共用方法 (透過 EmailJS REST API)
   const sendEmailJSMail = async (toEmail, code) => {
     try {
       const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
@@ -692,7 +699,6 @@ export default function App() {
       setActiveTeacherId(emailKey);
       setIsTeacherAuthed(true);
 
-      // 登入後決定跳轉畫面
       const params = new URLSearchParams(window.location.search);
       if (params.get('mode') === 'teacher') {
         setViewMode('teacher');
@@ -754,11 +760,9 @@ export default function App() {
   };
 
   // ==========================================
-  // 畫面輔助邏輯 (更新：絕對數值漸進式放大與階層顏色)
+  // 畫面輔助邏輯
   // ==========================================
   const getFontSize = (likes) => {
-    // 基礎大小調大為 1.5rem (約 24px)，使教室後方學生也容易看見。
-    // 讚數 1~10 時穩定線性放大，超過 10 讚後縮小放大倍率，避免無限膨脹。
     const scalingLike = likes <= 10 ? likes : 10 + (likes - 10) * 0.2;
     return `clamp(1.5rem, 1.5rem + ${scalingLike * 0.4}vw, 5.5rem)`;
   };
@@ -785,7 +789,7 @@ export default function App() {
   const bottomHalfMessages = messages.filter((_, idx) => idx % 2 !== 0);
 
   const isSessionValid = viewMode !== 'mobile' || (activeTeacherId && (!currentSessionId || mySessionId === currentSessionId));
-  const currentActivePollData = activePoll && (activePoll.type === 'poll' || activePoll.type === 'vote') ? activePoll : null;
+  const currentActivePollData = activePoll && (activePoll.type === 'poll' || activePoll.type === 'vote' || activePoll.type === 'quiz') ? activePoll : null;
 
   // ==========================================
   // 登入/註冊表單共用區塊
@@ -1018,7 +1022,7 @@ export default function App() {
             {showEnlargedQR && activeStudentUrl && (
               <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-lg animate-in fade-in" onClick={() => setShowEnlargedQR(false)}>
                 <div className="bg-white/90 p-8 md:p-12 rounded-[3rem] shadow-[0_0_100px_rgba(255,255,255,0.2)] flex flex-col items-center" onClick={e => e.stopPropagation()}>
-                  <h2 className="text-3xl md:text-4xl font-black text-slate-800 mb-8 tracking-widest">掃描加入【即時雲端互動】</h2>
+                  <h2 className="text-3xl md:text-4xl font-black text-slate-800 mb-8 tracking-widest">掃描加入【您的專屬教室】</h2>
                   <div className="p-4 rounded-3xl shadow-inner bg-slate-100 border-8 border-slate-200">
                     <img src={`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(activeStudentUrl)}`} alt="Enlarged QR" className="w-64 h-64 md:w-96 md:h-96" />
                   </div>
@@ -1039,7 +1043,7 @@ export default function App() {
                     </div>
 
                     {currentActivePollData.type === 'poll' && (
-                      <>
+                      <React.Fragment>
                         <div className="flex justify-between items-end w-full px-4 md:px-12 gap-6 mb-2">
                           <div className="w-[45%] text-left">
                             <h3 className={`font-bold text-xl md:text-3xl line-clamp-3 break-words leading-snug drop-shadow-sm ${projectorTheme === 'dark' ? 'text-blue-300' : 'text-blue-700'}`}>{String(currentActivePollData.optA || '')}</h3>
@@ -1098,10 +1102,10 @@ export default function App() {
                              </div>
                           )}
                         </div>
-                      </>
+                      </React.Fragment>
                     )}
 
-                    {currentActivePollData.type === 'vote' && (
+                    {(currentActivePollData.type === 'vote' || currentActivePollData.type === 'quiz') && (
                       <div className="w-full max-w-5xl mx-auto flex flex-col gap-4 md:gap-6 px-2 md:px-8 mt-2">
                         <div className="flex flex-col gap-5 md:gap-6">
                           {Array.isArray(currentActivePollData.options) ? currentActivePollData.options.map((opt, i) => {
@@ -1113,18 +1117,18 @@ export default function App() {
                                <div key={i} className="flex flex-col gap-2">
                                  <div className="flex justify-between items-end px-2">
                                     <span className={`text-lg md:text-2xl font-bold break-words pr-4 leading-snug ${projectorTheme === 'dark' ? 'text-white' : 'text-slate-800'}`}>{String(opt)}</span>
-                                    <span className={`shrink-0 text-2xl md:text-4xl font-black transition-opacity duration-1000 ${showResults ? 'opacity-100' : 'opacity-0'} ${projectorTheme === 'dark' ? 'text-purple-400' : 'text-purple-600'}`}>{count} <span className="text-lg md:text-xl">票</span></span>
+                                    <span className={`shrink-0 text-2xl md:text-4xl font-black transition-opacity duration-1000 ${showResults ? 'opacity-100' : 'opacity-0'} ${projectorTheme === 'dark' ? (currentActivePollData.type === 'quiz' ? 'text-emerald-400' : 'text-purple-400') : (currentActivePollData.type === 'quiz' ? 'text-emerald-600' : 'text-purple-600')}`}>{count} <span className="text-lg md:text-xl">票</span></span>
                                  </div>
                                  <div className={`w-full h-6 md:h-10 rounded-full overflow-hidden border-2 ${projectorTheme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-slate-200 border-slate-300'}`}>
                                     <div
-                                      className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 flex items-center justify-end px-4 tug-slide-slow"
+                                      className={`h-full flex items-center justify-end px-4 tug-slide-slow ${currentActivePollData.type === 'quiz' ? 'bg-gradient-to-r from-emerald-500 to-teal-500' : 'bg-gradient-to-r from-purple-500 to-indigo-500'}`}
                                       style={{ width: `${Number(displayPercent)}%` }}
                                     >
                                        {displayPercent >= 5 && <span className="text-white font-bold text-xs md:text-sm drop-shadow-md animate-in fade-in duration-1000 delay-700">{Number(displayPercent).toFixed(1)}%</span>}
                                     </div>
                                  </div>
                                </div>
-                             )
+                             );
                           }) : null}
                         </div>
                       </div>
@@ -1203,7 +1207,8 @@ export default function App() {
               <div className="bg-indigo-600 text-white p-4 pt-8 text-center shadow-md z-20 relative shrink-0">
                 <h2 className="font-bold text-lg">
                   {currentActivePollData?.type === 'poll' ? '⚔️ 陣營對決中' : 
-                   currentActivePollData?.type === 'vote' ? '📊 投票進行中' : '💬 參與討論'}
+                   currentActivePollData?.type === 'vote' ? '📊 投票進行中' : 
+                   currentActivePollData?.type === 'quiz' ? '📝 選擇題進行中' : '💬 參與討論'}
                 </h2>
                 <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-slate-800 rounded-b-3xl"></div>
               </div>
@@ -1220,14 +1225,19 @@ export default function App() {
                 <div className="absolute inset-0 top-[72px] bg-slate-900 z-30 flex flex-col p-6 animate-in slide-in-from-bottom-full duration-500 overflow-y-auto">
                   <div className="flex-1 flex flex-col justify-center gap-6 py-10">
                     <div className="text-center mb-4">
-                      {currentActivePollData.type === 'poll' ? <CircleDashed className="w-12 h-12 text-indigo-400 mx-auto mb-4 animate-[spin_4s_linear_infinite]" /> : <BarChart3 className="w-12 h-12 text-purple-400 mx-auto mb-4" />}
+                      {currentActivePollData.type === 'poll' ? <CircleDashed className="w-12 h-12 text-indigo-400 mx-auto mb-4 animate-[spin_4s_linear_infinite]" /> : 
+                       currentActivePollData.type === 'quiz' ? <CheckSquare className="w-12 h-12 text-emerald-400 mx-auto mb-4" /> : <BarChart3 className="w-12 h-12 text-purple-400 mx-auto mb-4" />}
                       <h2 className="text-2xl font-black text-white leading-snug drop-shadow-md break-words">{String(currentActivePollData.title || '')}</h2>
-                      <p className="text-slate-400 mt-2 text-sm font-medium">請選擇你的選項，這將影響大局。</p>
+                      <p className="text-slate-400 mt-2 text-sm font-medium">
+                        {currentActivePollData.type === 'quiz' && currentActivePollData.isMultiple 
+                          ? '請選擇一個或多個選項，這將影響大局。' 
+                          : '請選擇你的選項，這將影響大局。'}
+                      </p>
                     </div>
 
                     <div className="flex flex-col gap-4">
                       {currentActivePollData.type === 'poll' ? (
-                        <>
+                        <React.Fragment>
                           <button 
                             onClick={() => handleCastVote('A')} 
                             disabled={pollState !== 'voting'}
@@ -1250,41 +1260,69 @@ export default function App() {
                             </div>
                             {myVote === 'B' && pollState === 'voting' && <div className="absolute inset-0 bg-rose-500 opacity-20 animate-pulse"></div>}
                           </button>
-                        </>
+                        </React.Fragment>
                       ) : (
-                        Array.isArray(currentActivePollData.options) && currentActivePollData.options.map((opt, i) => (
-                          <button 
-                            key={i}
-                            onClick={() => handleCastVote(i.toString())}
-                            disabled={pollState !== 'voting'}
-                            className={`relative overflow-hidden w-full p-5 rounded-2xl border-2 transition-all duration-300 ${myVote === i.toString() ? 'bg-purple-600 border-purple-400 shadow-[0_0_20px_rgba(147,51,234,0.6)] scale-105' : 'bg-slate-800 border-slate-700'} ${pollState !== 'voting' ? 'cursor-default opacity-90' : 'hover:bg-slate-700'}`}
-                          >
-                            <div className="flex items-center justify-between z-10 relative">
-                              <span className={`text-lg font-bold text-left ${myVote === i.toString() ? 'text-white' : 'text-purple-300'}`}>{String(opt)}</span>
-                              {myVote === i.toString() && <div className="w-6 h-6 shrink-0 rounded-full bg-white flex items-center justify-center"><User className="w-4 h-4 text-purple-600" /></div>}
-                            </div>
-                            {myVote === i.toString() && pollState === 'voting' && <div className="absolute inset-0 bg-purple-500 opacity-20 animate-pulse"></div>}
-                          </button>
-                        ))
+                        Array.isArray(currentActivePollData.options) && currentActivePollData.options.map((opt, i) => {
+                          const isQuizMulti = currentActivePollData.type === 'quiz' && currentActivePollData.isMultiple;
+                          const isSelected = isQuizMulti 
+                            ? (Array.isArray(myVote) && myVote.includes(i.toString()))
+                            : (myVote === i.toString());
+
+                          return (
+                            <button 
+                              key={i}
+                              onClick={() => {
+                                if (pollState !== 'voting') return;
+                                if (isQuizMulti) {
+                                  let current = Array.isArray(myVote) ? [...myVote] : [];
+                                  if (current.includes(i.toString())) {
+                                    current = current.filter(v => v !== i.toString());
+                                  } else {
+                                    current.push(i.toString());
+                                  }
+                                  handleCastVote(current);
+                                } else {
+                                  handleCastVote(i.toString());
+                                }
+                              }}
+                              disabled={pollState !== 'voting'}
+                              className={`relative overflow-hidden w-full p-5 rounded-2xl border-2 transition-all duration-300 ${isSelected ? (currentActivePollData.type === 'quiz' ? 'bg-emerald-600 border-emerald-400 shadow-[0_0_20px_rgba(5,150,105,0.6)] scale-105' : 'bg-purple-600 border-purple-400 shadow-[0_0_20px_rgba(147,51,234,0.6)] scale-105') : 'bg-slate-800 border-slate-700'} ${pollState !== 'voting' ? 'cursor-default opacity-90' : 'hover:bg-slate-700'}`}
+                            >
+                              <div className="flex items-center justify-between z-10 relative">
+                                <span className={`text-lg font-bold text-left ${isSelected ? 'text-white' : (currentActivePollData.type === 'quiz' ? 'text-emerald-300' : 'text-purple-300')}`}>{String(opt)}</span>
+                                {isSelected && <div className="w-6 h-6 shrink-0 rounded-full bg-white flex items-center justify-center"><User className={`w-4 h-4 ${currentActivePollData.type === 'quiz' ? 'text-emerald-600' : 'text-purple-600'}`} /></div>}
+                              </div>
+                              {isSelected && pollState === 'voting' && <div className={`absolute inset-0 opacity-20 animate-pulse ${currentActivePollData.type === 'quiz' ? 'bg-emerald-500' : 'bg-purple-500'}`}></div>}
+                            </button>
+                          );
+                        })
                       )}
                     </div>
                     
-                    {myVote && (
-                      <div className="text-center mt-6 animate-in fade-in zoom-in">
-                        {pollState === 'voting' ? (
-                          <div className="inline-flex flex-col items-center">
-                            <Loader2 className={`w-6 h-6 animate-spin mb-2 ${currentActivePollData.type === 'vote' ? 'text-purple-400' : 'text-emerald-400'}`} />
-                            <p className={`font-bold mt-2 ${currentActivePollData.type === 'vote' ? 'text-purple-400' : 'text-emerald-400'}`}>已記錄選擇，等待教官揭曉...</p>
-                          </div>
-                        ) : (
-                          <p className={`font-bold text-lg ${currentActivePollData.type === 'vote' ? 'text-purple-400' : 'text-emerald-400'}`}>大局已定，請看大螢幕結果！</p>
-                        )}
-                      </div>
-                    )}
+                    {/* 已投票確認提示 */}
+                    {(() => {
+                      const hasVoted = (currentActivePollData.type === 'quiz' && currentActivePollData.isMultiple)
+                        ? (Array.isArray(myVote) && myVote.length > 0)
+                        : !!myVote;
+
+                      return hasVoted && (
+                        <div className="text-center mt-6 animate-in fade-in zoom-in">
+                          {pollState === 'voting' ? (
+                            <div className="inline-flex flex-col items-center">
+                              <Loader2 className={`w-6 h-6 animate-spin mb-2 ${currentActivePollData.type === 'vote' ? 'text-purple-400' : 'text-emerald-400'}`} />
+                              <p className={`font-bold mt-2 ${currentActivePollData.type === 'vote' ? 'text-purple-400' : 'text-emerald-400'}`}>已記錄選擇，等待教官揭曉...</p>
+                            </div>
+                          ) : (
+                            <p className={`font-bold text-lg ${currentActivePollData.type === 'vote' ? 'text-purple-400' : 'text-emerald-400'}`}>大局已定，請看大螢幕結果！</p>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               )}
 
+              {/* 正常留言牆介面 */}
               {isSessionValid && !currentActivePollData && (
                 <>
                   {currentTopic && (
@@ -1301,25 +1339,26 @@ export default function App() {
                       messages.map((msg) => {
                         const isLiked = msg.likedBy && msg.likedBy.includes(user?.uid);
                         return (
-                        <div key={msg.id} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex gap-3 animate-in slide-in-from-bottom-2">
-                          <div className="bg-slate-100 p-2 rounded-full h-fit shrink-0">
-                            {msg.author === '匿名' ? <Ghost className="w-5 h-5 text-slate-500" /> : <User className="w-5 h-5 text-indigo-500" />}
+                          <div key={msg.id} className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex gap-3 animate-in slide-in-from-bottom-2">
+                            <div className="bg-slate-100 p-2 rounded-full h-fit shrink-0">
+                              {msg.author === '匿名' ? <Ghost className="w-5 h-5 text-slate-500" /> : <User className="w-5 h-5 text-indigo-500" />}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-xs text-slate-500 font-medium mb-1 truncate">{String(msg.author)}</div>
+                              <p className="text-slate-800 leading-relaxed text-sm break-words">{String(msg.text)}</p>
+                            </div>
+                            <div className="flex flex-col items-center justify-center gap-2 min-w-[3.5rem] shrink-0 border-l border-slate-100 pl-2">
+                              <button onClick={() => handleLike(msg.id)} className={`p-1.5 rounded-full group flex flex-col items-center cursor-pointer transition-colors ${isLiked ? 'hover:bg-rose-50 text-indigo-600 hover:text-rose-500' : 'hover:bg-indigo-50 text-slate-400 hover:text-indigo-600'}`}>
+                                <ThumbsUp className={`w-5 h-5 transition-all ${isLiked ? 'fill-indigo-600 text-indigo-600 scale-110 group-hover:fill-rose-500 group-hover:text-rose-500' : (msg.likes > 0 ? 'fill-indigo-100 text-indigo-500' : 'group-hover:fill-indigo-200 active:scale-75')}`} />
+                                <span className={`text-[10px] font-bold mt-1 ${isLiked ? 'text-indigo-600 group-hover:text-rose-500' : (msg.likes > 0 ? 'text-indigo-600' : 'text-slate-500')}`}>{Number(msg.likes)}</span>
+                              </button>
+                              <button onClick={() => handleShake(msg.id)} className="p-1.5 rounded-full hover:bg-amber-50 text-slate-300 hover:text-amber-500 group flex flex-col items-center">
+                                <Bell className="w-5 h-5 transition-all group-hover:fill-amber-200 active:scale-75 active:text-amber-600" />
+                              </button>
+                            </div>
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="text-xs text-slate-500 font-medium mb-1 truncate">{String(msg.author)}</div>
-                            <p className="text-slate-800 leading-relaxed text-sm break-words">{String(msg.text)}</p>
-                          </div>
-                          <div className="flex flex-col items-center justify-center gap-2 min-w-[3.5rem] shrink-0 border-l border-slate-100 pl-2">
-                            <button onClick={() => handleLike(msg.id)} className={`p-1.5 rounded-full group flex flex-col items-center cursor-pointer transition-colors ${isLiked ? 'hover:bg-rose-50 text-indigo-600 hover:text-rose-500' : 'hover:bg-indigo-50 text-slate-400 hover:text-indigo-600'}`}>
-                              <ThumbsUp className={`w-5 h-5 transition-all ${isLiked ? 'fill-indigo-600 text-indigo-600 scale-110 group-hover:fill-rose-500 group-hover:text-rose-500' : (msg.likes > 0 ? 'fill-indigo-100 text-indigo-500' : 'group-hover:fill-indigo-200 active:scale-75')}`} />
-                              <span className={`text-[10px] font-bold mt-1 ${isLiked ? 'text-indigo-600 group-hover:text-rose-500' : (msg.likes > 0 ? 'text-indigo-600' : 'text-slate-500')}`}>{Number(msg.likes)}</span>
-                            </button>
-                            <button onClick={() => handleShake(msg.id)} className="p-1.5 rounded-full hover:bg-amber-50 text-slate-300 hover:text-amber-500 group flex flex-col items-center">
-                              <Bell className="w-5 h-5 transition-all group-hover:fill-amber-200 active:scale-75 active:text-amber-600" />
-                            </button>
-                          </div>
-                        </div>
-                      )})
+                        );
+                      })
                     )}
                   </div>
 
@@ -1361,9 +1400,21 @@ export default function App() {
           </div>
         )}
 
-        {/* ==================== 4. 手機端視角 (教官遙控器) ==================== */}
+        {/* ==================== 手機端視角 (教官遙控器) ==================== */}
         {viewMode === 'teacher' && isTeacherAuthed && (
           <div className="absolute inset-0 bg-slate-200 flex justify-center items-center p-4 sm:p-8 animate-in fade-in duration-300">
+            {/* 教官端模擬信件通知 Toast */}
+            {simulatedEmailToast && (
+              <div className="absolute top-10 left-1/2 -translate-x-1/2 z-[100] w-11/12 max-w-sm bg-white p-4 rounded-2xl shadow-2xl border-l-8 border-indigo-500 animate-in slide-in-from-top-10 fade-in flex items-start gap-3">
+                <div className="bg-indigo-100 p-2 rounded-full text-indigo-600"><Mail className="w-5 h-5"/></div>
+                <div className="flex-1">
+                  <h4 className="font-bold text-slate-800 text-sm mb-1">系統發信通知</h4>
+                  <p className="text-xs text-slate-600 leading-relaxed">{simulatedEmailToast}</p>
+                </div>
+                <button onClick={() => setSimulatedEmailToast('')} className="text-slate-400 hover:text-slate-600"><X className="w-4 h-4"/></button>
+              </div>
+            )}
+
             <div className={`w-full ${teacherLayout === 'desktop' ? 'max-w-7xl h-[95vh] rounded-[2rem] border-2 border-slate-300' : 'max-w-md h-full max-h-[850px] rounded-[2.5rem] border-8 border-slate-800'} bg-slate-50 shadow-2xl overflow-hidden flex flex-col relative transition-all duration-300`}>
               
               <div className="bg-slate-800 text-white p-3 md:p-4 min-h-[4rem] flex items-center justify-between shadow-md z-10 relative shrink-0">
@@ -1373,73 +1424,83 @@ export default function App() {
                     <span className="hidden sm:inline font-bold">{teacherLayout === 'mobile' ? '切換電腦版' : '切換手機版'}</span>
                   </button>
                 </div>
+
                 <div className="flex-1 flex justify-center">
                   <h2 className="font-bold text-base md:text-lg flex items-center gap-2 whitespace-nowrap">
                     <ShieldCheck className="w-5 h-5 text-indigo-400" /> 
                     <span className="hidden sm:inline">教官控制台</span>
                   </h2>
                 </div>
-                <div className="flex-1 flex justify-end"></div>
+
+                <div className="flex-1 flex justify-end">
+                  {isTeacherAuthed && (
+                    <button onClick={handleTeacherLogout} className="text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-lg flex items-center gap-1 transition-colors">
+                      <LogOut className="w-3 h-3"/><span className="hidden sm:inline">登出</span>
+                    </button>
+                  )}
+                </div>
+                
                 {teacherLayout === 'mobile' && <div className="absolute top-0 left-1/2 -translate-x-1/2 w-24 md:w-32 h-5 bg-slate-900 rounded-b-3xl"></div>}
               </div>
 
               <div className={`flex-1 overflow-y-auto p-4 md:p-6 bg-slate-100 ${teacherLayout === 'desktop' ? 'grid grid-cols-1 lg:grid-cols-12 gap-6' : 'flex flex-col space-y-4'}`}>
                 
                 {teacherLayout === 'desktop' ? (
-                  <>
+                  <React.Fragment>
+                    {/* 電腦版：左側狀態與系統管理區塊 */}
                     <div className="lg:col-span-4 flex flex-col gap-6">
-                      <div className={`shrink-0 p-5 rounded-2xl shadow-sm border-2 relative overflow-hidden transition-colors ${(activePollId && currentActivePollData) ? (currentActivePollData.type === 'vote' ? 'bg-white border-purple-100' : 'bg-white border-rose-100') : (currentTopic ? 'bg-white border-indigo-100' : 'bg-slate-50 border-slate-200')}`}>
-                        <div className={`absolute top-0 left-0 w-1.5 h-full ${(activePollId && currentActivePollData) ? (currentActivePollData.type === 'vote' ? 'bg-purple-500' : 'bg-rose-500') : (currentTopic ? 'bg-indigo-500' : 'bg-slate-300')}`}></div>
+                      <div className={`shrink-0 p-5 rounded-2xl shadow-sm border-2 relative overflow-hidden transition-colors ${(activePollId && currentActivePollData) ? (currentActivePollData.type === 'vote' ? 'bg-white border-purple-100' : currentActivePollData.type === 'quiz' ? 'bg-white border-emerald-100' : 'bg-white border-rose-100') : (currentTopic ? 'bg-white border-indigo-100' : 'bg-slate-50 border-slate-200')}`}>
+                        <div className={`absolute top-0 left-0 w-1.5 h-full ${(activePollId && currentActivePollData) ? (currentActivePollData.type === 'vote' ? 'bg-purple-500' : currentActivePollData.type === 'quiz' ? 'bg-emerald-500' : 'bg-rose-500') : (currentTopic ? 'bg-indigo-500' : 'bg-slate-300')}`}></div>
                         <h3 className="text-sm font-bold text-slate-500 mb-3 flex items-center gap-2">
                           <MonitorPlay className="w-4 h-4" /> 大螢幕當前狀態
                         </h3>
                         
                         {activePollId && currentActivePollData ? (
-                          <div className="animate-in fade-in flex flex-col gap-4">
-                            <span className={`inline-block px-2 py-1 text-[10px] font-bold rounded tracking-widest w-fit ${currentActivePollData.type === 'vote' ? 'bg-purple-100 text-purple-700' : 'bg-rose-100 text-rose-700'}`}>
-                              {currentActivePollData.type === 'vote' ? '📊 投票模式' : '⚔️ 拔河模式'}
+                          <div className="animate-in fade-in flex flex-col h-full">
+                            <span className={`inline-block px-2 py-1 text-[10px] font-bold rounded mb-2 tracking-widest w-fit ${currentActivePollData.type === 'vote' ? 'bg-purple-100 text-purple-700' : currentActivePollData.type === 'quiz' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                              {currentActivePollData.type === 'vote' ? '📊 投票模式' : currentActivePollData.type === 'quiz' ? (currentActivePollData.isMultiple ? '📝 選擇模式 (複選)' : '📝 選擇模式 (單選)') : '⚔️ 拔河模式'}
                             </span>
-                            <div className={`text-lg font-black leading-snug break-words ${currentActivePollData.type === 'vote' ? 'text-purple-900' : 'text-rose-900'}`}>{String(currentActivePollData.title)}</div>
+                            <div className={`text-lg font-black mb-2 leading-snug break-words ${currentActivePollData.type === 'vote' ? 'text-purple-900' : currentActivePollData.type === 'quiz' ? 'text-emerald-900' : 'text-rose-900'}`}>{String(currentActivePollData.title)}</div>
                             
                             {currentActivePollData.type === 'poll' ? (
-                              <div className="flex justify-between text-xs font-bold bg-slate-50 p-2 rounded-lg border border-slate-100">
+                              <div className="flex justify-between text-xs font-bold bg-slate-50 p-2 rounded-lg mb-4 border border-slate-100">
                                 <span className="text-blue-600 truncate mr-2">{String(currentActivePollData.optA || '')}</span>
                                 <span className="text-rose-600 truncate">{String(currentActivePollData.optB || '')}</span>
                               </div>
                             ) : (
-                              <div className="flex flex-col gap-1 text-xs font-bold bg-slate-50 p-2 rounded-lg border border-slate-100">
+                              <div className="flex flex-col gap-1 text-xs font-bold bg-slate-50 p-2 rounded-lg mb-4 border border-slate-100">
                                  {Array.isArray(currentActivePollData.options) ? currentActivePollData.options.map((opt, i) => (
                                     <div key={i} className="flex justify-between">
                                       <span className="text-slate-600 truncate pr-2">{String(opt)}</span>
-                                      <span className="text-purple-600 shrink-0">{pollVotes.counts[i.toString()] || 0} 票</span>
+                                      <span className={`${currentActivePollData.type === 'quiz' ? 'text-emerald-600' : 'text-purple-600'} shrink-0`}>{pollVotes.counts[i.toString()] || 0} 票</span>
                                     </div>
                                  )) : <span className="text-slate-400 p-1">選項載入中...</span>}
                               </div>
                             )}
 
-                            <div className={`border rounded-xl p-3 text-center shadow-inner flex flex-col items-center justify-center ${currentActivePollData.type === 'vote' ? 'bg-purple-50 border-purple-100' : 'bg-rose-50 border-rose-100'}`}>
-                              <span className={`text-xs font-bold block mb-1 ${currentActivePollData.type === 'vote' ? 'text-purple-400' : 'text-rose-400'}`}>目前已收集 / 在線總人數</span>
+                            <div className={`border rounded-xl p-3 mb-4 text-center shadow-inner flex flex-col items-center justify-center ${currentActivePollData.type === 'vote' ? 'bg-purple-50 border-purple-100' : currentActivePollData.type === 'quiz' ? 'bg-emerald-50 border-emerald-100' : 'bg-rose-50 border-rose-100'}`}>
+                              <span className={`text-xs font-bold block mb-1 ${currentActivePollData.type === 'vote' ? 'text-purple-400' : currentActivePollData.type === 'quiz' ? 'text-emerald-400' : 'text-rose-400'}`}>目前已收集 / 在線總人數</span>
                               <div className="flex items-baseline gap-2">
-                                <span className={`text-3xl font-black ${currentActivePollData.type === 'vote' ? 'text-purple-600' : 'text-rose-600'}`}>{pollVotes.total} <span className="text-sm">票</span></span>
+                                <span className={`text-3xl font-black ${currentActivePollData.type === 'vote' ? 'text-purple-600' : currentActivePollData.type === 'quiz' ? 'text-emerald-600' : 'text-rose-600'}`}>{pollVotes.total} <span className="text-sm">人參與</span></span>
                                 <span className="text-slate-400 font-bold text-lg">/ {onlineCount} 人</span>
                               </div>
                             </div>
                             
                             {pollState === 'voting' ? (
-                              <button onClick={handleRevealPoll} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl text-sm transition-colors flex items-center justify-center gap-2 shadow-md mt-1">
-                                <Play className="w-4 h-4 fill-current"/> {currentActivePollData.type === 'vote' ? '開始結算 (觸發動畫並揭曉)' : '開始拔河 (觸發動畫並揭曉)'}
+                              <button onClick={handleRevealPoll} className="w-full mt-auto bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl text-sm transition-colors flex items-center justify-center gap-2 shadow-md">
+                                <Play className="w-4 h-4 fill-current"/> {currentActivePollData.type === 'poll' ? '開始拔河 (觸發動畫並揭曉)' : '開始結算 (觸發動畫並揭曉)'}
                               </button>
                             ) : (
-                              <button onClick={handleStopPoll} className={`w-full font-bold py-3 rounded-xl text-sm transition-colors flex items-center justify-center gap-2 mt-1 ${currentActivePollData.type === 'vote' ? 'bg-purple-100 hover:bg-purple-200 text-purple-700' : 'bg-rose-100 hover:bg-rose-200 text-rose-700'}`}>
+                              <button onClick={handleStopPoll} className={`w-full mt-auto font-bold py-3 rounded-xl text-sm transition-colors flex items-center justify-center gap-2 ${currentActivePollData.type === 'vote' ? 'bg-purple-100 hover:bg-purple-200 text-purple-700' : currentActivePollData.type === 'quiz' ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700' : 'bg-rose-100 hover:bg-rose-200 text-rose-700'}`}>
                                 <Square className="w-4 h-4 fill-current"/> 關閉結果與模式
                               </button>
                             )}
                           </div>
                         ) : currentTopic ? (
-                          <div className="animate-in fade-in flex flex-col gap-4">
-                            <span className="inline-block px-2 py-1 bg-indigo-100 text-indigo-700 text-[10px] font-bold rounded tracking-widest w-fit">💬 留言模式</span>
-                            <div className="text-lg font-black text-indigo-900 leading-tight min-h-[3rem] break-words">{String(currentTopic)}</div>
-                            <button onClick={() => handleSetTopic('')} className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-xl text-sm transition-colors mt-1">
+                          <div className="animate-in fade-in">
+                            <span className="inline-block px-2 py-1 bg-indigo-100 text-indigo-700 text-[10px] font-bold rounded mb-2 tracking-widest w-fit">💬 留言模式</span>
+                            <div className="text-lg font-black text-indigo-900 mb-4 leading-tight min-h-[3rem] break-words">{String(currentTopic)}</div>
+                            <button onClick={() => handleSetTopic('')} className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-xl text-sm transition-colors">
                               撤下話題
                             </button>
                           </div>
@@ -1460,13 +1521,14 @@ export default function App() {
                             <label className="text-xs font-bold text-slate-400 flex items-center gap-1"><Link className="w-3 h-3" /> 群組邀請連結設定</label>
                             <input type="text" value={localInviteLink} onChange={(e) => setLocalInviteLink(e.target.value)} placeholder="https://..." className="w-full bg-slate-900 text-slate-300 border border-slate-600 rounded-xl px-3 py-2 text-sm outline-none focus:border-indigo-500 transition-colors" />
                           </div>
-                          <button onClick={async () => await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', `${activeTeacherId}_settings`, 'global'), { showInviteModal: !showInviteModal, inviteLink: localInviteLink })} className={`w-full font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2 transition-all ${showInviteModal ? 'bg-white text-slate-900' : 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-md'}`}>
-                            {showInviteModal ? <><X className="w-4 h-4" /> 收回邀請視窗</> : <><Users className="w-4 h-4" /> 發送課後群組邀請 (凍結畫面)</>}
+                          <button onClick={async () => await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'global'), { showInviteModal: !showInviteModal, inviteLink: localInviteLink })} className={`w-full font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2 transition-all ${showInviteModal ? 'bg-white text-slate-900' : 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-md'}`}>
+                            {showInviteModal ? <React.Fragment><X className="w-4 h-4" /> 收回邀請視窗</React.Fragment> : <React.Fragment><Users className="w-4 h-4" /> 發送課後群組邀請 (凍結畫面)</React.Fragment>}
                           </button>
                         </div>
                       </div>
                     </div>
 
+                    {/* 電腦版右欄：題庫腳本與新增 */}
                     <div className="lg:col-span-8 flex flex-col gap-6 h-full">
                       <div className="flex-1 flex flex-col bg-white p-5 rounded-2xl shadow-sm border border-slate-200 relative overflow-hidden">
                         <h3 className="shrink-0 text-sm font-bold text-slate-800 mb-4 flex items-center justify-between relative z-10">
@@ -1475,94 +1537,114 @@ export default function App() {
                         </h3>
 
                         <div className="flex-1 overflow-y-auto space-y-3 mb-1 relative z-10 pr-2">
-                          {Array.isArray(agenda) && agenda.length === 0 ? <p className="text-center text-slate-400 text-sm py-2">題庫空空如也</p> : Array.isArray(agenda) && agenda.map((item, idx) => {
-                            if(!item) return null;
-                            const isActive = (item.type === 'text' && currentTopic === item.title) || ((item.type === 'poll' || item.type === 'vote') && activePollId === item.id);
-                            
-                            if (editingQuestionId === item.id) {
-                              return (
-                                <div key={item.id} className="flex flex-col gap-3 p-4 rounded-xl border bg-amber-50 border-amber-200 shadow-sm animate-in zoom-in-95">
-                                  <span className="text-xs font-bold text-amber-600 mb-1 flex items-center gap-1"><Edit className="w-3 h-3"/> 編輯題目 ({item.type === 'text' ? '文字' : item.type === 'poll' ? '拔河' : '投票'})</span>
-                                  <input type="text" value={editFormData.title || ''} onChange={e => setEditFormData({...editFormData, title: e.target.value})} className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-amber-400" placeholder="題目名稱" />
-                                  
-                                  {editFormData.type === 'poll' && (
-                                    <div className="flex gap-2">
-                                      <input type="text" value={editFormData.optA || ''} onChange={e => setEditFormData({...editFormData, optA: e.target.value})} className="flex-1 w-0 bg-white border border-blue-200 rounded-lg px-3 py-2 text-sm" placeholder="選項 A" />
-                                      <input type="text" value={editFormData.optB || ''} onChange={e => setEditFormData({...editFormData, optB: e.target.value})} className="flex-1 w-0 bg-white border border-rose-200 rounded-lg px-3 py-2 text-sm" placeholder="選項 B" />
-                                    </div>
-                                  )}
-                                  {editFormData.type === 'vote' && (
-                                    <div className="flex flex-col gap-2">
-                                       {[0, 1, 2, 3].map(i => (
-                                         <input key={i} type="text" value={editFormData.options?.[i] || ''} onChange={e => {
-                                             const newOpts = [...(editFormData.options || ['', '', '', ''])];
-                                             while(newOpts.length < 4) newOpts.push('');
-                                             newOpts[i] = e.target.value;
-                                             setEditFormData({...editFormData, options: newOpts});
-                                           }}
-                                           placeholder={`選項 ${i+1} ${i >= 2 ? '(選填)' : '(必填)'}`}
-                                           className="w-full bg-white border border-purple-200 rounded-lg px-3 py-2 text-sm"
-                                         />
-                                       ))}
-                                    </div>
-                                  )}
+                          {Array.isArray(agenda) && agenda.length === 0 ? (
+                             <p className="text-center text-slate-400 text-sm py-2">題庫空空如也</p>
+                          ) : (
+                             Array.isArray(agenda) && agenda.map((item, idx) => {
+                              if(!item) return null;
+                              const isActive = (item.type === 'text' && currentTopic === item.title) || ((item.type === 'poll' || item.type === 'vote' || item.type === 'quiz') && activePollId === item.id);
+                              
+                              if (editingQuestionId === item.id) {
+                                return (
+                                  <div key={item.id} className="flex flex-col gap-3 p-4 rounded-xl border bg-amber-50 border-amber-200 shadow-sm animate-in zoom-in-95">
+                                    <span className="text-xs font-bold text-amber-600 mb-1 flex items-center gap-1"><Edit className="w-3 h-3"/> 編輯題目 ({item.type === 'text' ? '文字' : item.type === 'poll' ? '拔河' : item.type === 'vote' ? '投票' : '選擇'})</span>
+                                    
+                                    <input type="text" value={editFormData.title || ''} onChange={e => setEditFormData({...editFormData, title: e.target.value})} className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-amber-400" placeholder="題目名稱" />
+                                    
+                                    {editFormData.type === 'poll' && (
+                                      <div className="flex gap-2">
+                                        <input type="text" value={editFormData.optA || ''} onChange={e => setEditFormData({...editFormData, optA: e.target.value})} className="flex-1 w-0 bg-white border border-blue-200 rounded-lg px-3 py-2 text-sm" placeholder="選項 A" />
+                                        <input type="text" value={editFormData.optB || ''} onChange={e => setEditFormData({...editFormData, optB: e.target.value})} className="flex-1 w-0 bg-white border border-rose-200 rounded-lg px-3 py-2 text-sm" placeholder="選項 B" />
+                                      </div>
+                                    )}
+                                    
+                                    {(editFormData.type === 'vote' || editFormData.type === 'quiz') && (
+                                      <div className="flex flex-col gap-2">
+                                         {editFormData.type === 'quiz' && (
+                                           <div className="flex items-center justify-between bg-white p-2 rounded-lg border border-emerald-200 mb-1">
+                                             <span className="text-xs font-bold text-slate-600">允許學生複選</span>
+                                             <label className="flex items-center cursor-pointer">
+                                               <div className="relative">
+                                                 <input type="checkbox" className="sr-only" checked={editFormData.isMultiple || false} onChange={() => setEditFormData({...editFormData, isMultiple: !editFormData.isMultiple})} />
+                                                 <div className={`block w-10 h-6 rounded-full transition-colors ${editFormData.isMultiple ? 'bg-emerald-500' : 'bg-slate-300'}`}></div>
+                                                 <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${editFormData.isMultiple ? 'transform translate-x-4' : ''}`}></div>
+                                               </div>
+                                             </label>
+                                           </div>
+                                         )}
+                                         {[0, 1, 2, 3].map(i => (
+                                           <input key={i} type="text" value={editFormData.options?.[i] || ''} onChange={e => {
+                                               const newOpts = [...(editFormData.options || ['', '', '', ''])];
+                                               while(newOpts.length < 4) newOpts.push('');
+                                               newOpts[i] = e.target.value;
+                                               setEditFormData({...editFormData, options: newOpts});
+                                             }}
+                                             placeholder={`選項 ${i+1} ${i >= 2 ? '(選填)' : '(必填)'}`}
+                                             className={`w-full bg-white border ${editFormData.type === 'quiz' ? 'border-emerald-200' : 'border-purple-200'} rounded-lg px-3 py-2 text-sm`}
+                                           />
+                                         ))}
+                                      </div>
+                                    )}
 
-                                  <div className="flex gap-2 mt-1">
-                                    <button onClick={cancelEditing} className="flex-1 bg-slate-200 text-slate-700 font-bold py-2.5 rounded-lg text-sm hover:bg-slate-300 transition-colors">取消</button>
-                                    <button onClick={saveEditing} className="flex-1 bg-amber-500 text-white font-bold py-2.5 rounded-lg text-sm hover:bg-amber-600 shadow-sm transition-colors">儲存變更</button>
+                                    <div className="flex gap-2 mt-1">
+                                      <button onClick={cancelEditing} className="flex-1 bg-slate-200 text-slate-700 font-bold py-2.5 rounded-lg text-sm hover:bg-slate-300 transition-colors">取消</button>
+                                      <button onClick={saveEditing} className="flex-1 bg-amber-500 text-white font-bold py-2.5 rounded-lg text-sm hover:bg-amber-600 shadow-sm transition-colors">儲存變更</button>
+                                    </div>
+                                  </div>
+                                )
+                              }
+
+                              return (
+                              <div key={item.id || idx} className={`flex flex-col gap-2 p-3 rounded-xl border transition-all ${isActive ? (item.type === 'poll' ? 'bg-rose-50 border-rose-200 shadow-sm' : (item.type === 'vote' ? 'bg-purple-50 border-purple-200 shadow-sm' : 'bg-indigo-50 border-indigo-200 shadow-sm')) : 'bg-slate-50 border-slate-100 hover:bg-white hover:shadow-sm group'}`}>
+                                <div className="flex items-start justify-between gap-2">
+                                  <p className="text-sm font-bold text-slate-700 leading-tight break-words flex items-start gap-2">
+                                    <span className="shrink-0 text-base">{item.type === 'text' ? '💬' : (item.type === 'poll' ? '⚔️' : '📊')}</span>
+                                    <span className="mt-0.5"><span className="text-slate-400 font-black mr-1">{idx + 1}.</span>{String(item.title || '')}</span>
+                                  </p>
+                                  <div className="flex flex-col gap-1 shrink-0 opacity-100 lg:opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button onClick={() => handleMoveQuestion(idx, -1)} disabled={idx === 0 || isActive} className="text-slate-400 hover:text-slate-700 disabled:opacity-30"><ChevronUp className="w-4 h-4"/></button>
+                                    <button onClick={() => handleMoveQuestion(idx, 1)} disabled={idx === agenda.length - 1 || isActive} className="text-slate-400 hover:text-slate-700 disabled:opacity-30"><ChevronDown className="w-4 h-4"/></button>
                                   </div>
                                 </div>
-                              )
-                            }
 
-                            return (
-                            <div key={item.id || idx} className={`flex flex-col gap-2 p-3 rounded-xl border transition-all ${isActive ? (item.type === 'poll' ? 'bg-rose-50 border-rose-200 shadow-sm' : (item.type === 'vote' ? 'bg-purple-50 border-purple-200 shadow-sm' : 'bg-indigo-50 border-indigo-200 shadow-sm')) : 'bg-slate-50 border-slate-100 hover:bg-white hover:shadow-sm group'}`}>
-                              <div className="flex items-start justify-between gap-2">
-                                <p className="text-sm font-bold text-slate-700 leading-tight break-words flex items-start gap-2">
-                                  <span className="shrink-0 text-base">{item.type === 'text' ? '💬' : (item.type === 'poll' ? '⚔️' : '📊')}</span>
-                                  <span className="mt-0.5"><span className="text-slate-400 font-black mr-1">{idx + 1}.</span>{String(item.title || '')}</span>
-                                </p>
-                                <div className="flex flex-col gap-1 shrink-0 opacity-100 lg:opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <button onClick={() => handleMoveQuestion(idx, -1)} disabled={idx === 0 || isActive} className="text-slate-400 hover:text-slate-700 disabled:opacity-30"><ChevronUp className="w-4 h-4"/></button>
-                                  <button onClick={() => handleMoveQuestion(idx, 1)} disabled={idx === agenda.length - 1 || isActive} className="text-slate-400 hover:text-slate-700 disabled:opacity-30"><ChevronDown className="w-4 h-4"/></button>
+                                {item.type === 'poll' && (
+                                  <div className="flex text-xs font-medium bg-white rounded shadow-sm overflow-hidden border border-slate-100 mt-1">
+                                    <div className="flex-1 bg-blue-50 text-blue-700 px-2 py-1.5 truncate border-r border-slate-100">{String(item.optA || '')}</div>
+                                    <div className="flex-1 bg-rose-50 text-rose-700 px-2 py-1.5 truncate">{String(item.optB || '')}</div>
+                                  </div>
+                                )}
+
+                                {(item.type === 'vote' || item.type === 'quiz') && Array.isArray(item.options) && (
+                                  <div className="flex flex-col text-xs font-medium bg-white rounded shadow-sm overflow-hidden border border-slate-100 mt-1">
+                                    {item.type === 'quiz' && <div className="px-2 py-1 text-[10px] font-bold bg-emerald-50 text-emerald-600 border-b border-slate-100">模式: {item.isMultiple ? '複選' : '單選'}</div>}
+                                    {item.options.map((opt, oIdx) => (
+                                      <div key={oIdx} className="px-2 py-1 truncate border-b border-slate-100 last:border-b-0 bg-slate-50 text-slate-600">
+                                        {oIdx + 1}. {String(opt)}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                <div className="flex justify-between items-center mt-1 pt-2 border-t border-slate-200/50">
+                                  <div className="flex gap-1">
+                                    <button onClick={() => startEditing(item)} disabled={isActive} className="text-slate-400 hover:text-amber-500 p-1.5 disabled:opacity-30 transition-colors"><Edit className="w-4 h-4" /></button>
+                                    <button onClick={() => handleDeleteQuestion(idx)} disabled={isActive} className="text-slate-400 hover:text-rose-500 p-1.5 disabled:opacity-30 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                                  </div>
+                                  <button
+                                    onClick={() => {
+                                      if (isActive && (item.type === 'poll' || item.type === 'vote' || item.type === 'quiz')) handleStopPoll();
+                                      else if (isActive && item.type === 'text') handleSetTopic('');
+                                      else handlePublishQuestion(item);
+                                    }}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 shadow-sm ${isActive ? 'bg-slate-200 text-slate-700 hover:bg-slate-300' : (item.type === 'poll' ? 'bg-rose-100 text-rose-700 hover:bg-rose-200' : item.type === 'vote' ? 'bg-purple-100 text-purple-700 hover:bg-purple-200' : item.type === 'quiz' ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200')}`}
+                                  >
+                                    {isActive ? <React.Fragment><Square className="w-3 h-3 fill-current"/> 取消發布</React.Fragment> : <React.Fragment><Play className="w-3 h-3 fill-current"/> {item.type === 'text' ? '發布話題' : '開放集結'}</React.Fragment>}
+                                  </button>
                                 </div>
                               </div>
-
-                              {item.type === 'poll' && (
-                                <div className="flex text-xs font-medium bg-white rounded shadow-sm overflow-hidden border border-slate-100 mt-1">
-                                  <div className="flex-1 bg-blue-50 text-blue-700 px-2 py-1.5 truncate border-r border-slate-100">{String(item.optA || '')}</div>
-                                  <div className="flex-1 bg-rose-50 text-rose-700 px-2 py-1.5 truncate">{String(item.optB || '')}</div>
-                                </div>
-                              )}
-
-                              {item.type === 'vote' && Array.isArray(item.options) && (
-                                <div className="flex flex-col text-xs font-medium bg-white rounded shadow-sm overflow-hidden border border-slate-100 mt-1">
-                                  {item.options.map((opt, oIdx) => (
-                                    <div key={oIdx} className="px-2 py-1 truncate border-b border-slate-100 last:border-b-0 bg-slate-50 text-slate-600">
-                                      {oIdx + 1}. {String(opt)}
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-
-                              <div className="flex justify-between items-center mt-1 pt-2 border-t border-slate-200/50">
-                                <div className="flex gap-1">
-                                  <button onClick={() => startEditing(item)} disabled={isActive} className="text-slate-400 hover:text-amber-500 p-1.5 disabled:opacity-30 transition-colors"><Edit className="w-4 h-4" /></button>
-                                  <button onClick={() => handleDeleteQuestion(idx)} disabled={isActive} className="text-slate-400 hover:text-rose-500 p-1.5 disabled:opacity-30 transition-colors"><Trash2 className="w-4 h-4" /></button>
-                                </div>
-                                <button
-                                  onClick={() => {
-                                    if (isActive && (item.type === 'poll' || item.type === 'vote')) handleStopPoll();
-                                    else if (isActive && item.type === 'text') handleSetTopic('');
-                                    else handlePublishQuestion(item);
-                                  }}
-                                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 shadow-sm ${isActive ? 'bg-slate-200 text-slate-700 hover:bg-slate-300' : (item.type === 'poll' ? 'bg-rose-100 text-rose-700 hover:bg-rose-200' : (item.type === 'vote' ? 'bg-purple-100 text-purple-700 hover:bg-purple-200' : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'))}`}
-                                >
-                                  {isActive ? <><Square className="w-3 h-3 fill-current"/> 取消發布</> : <><Play className="w-3 h-3 fill-current"/> {item.type === 'text' ? '發布話題' : '開放集結'}</>}
-                                </button>
-                              </div>
-                            </div>
-                          )})}
+                            );
+                          })
+                        )}
                         </div>
                       </div>
 
@@ -1573,6 +1655,7 @@ export default function App() {
                           <button type="button" onClick={() => setNewQuestionType('text')} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${newQuestionType === 'text' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>💬 文字</button>
                           <button type="button" onClick={() => setNewQuestionType('poll')} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${newQuestionType === 'poll' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>⚔️ 拔河</button>
                           <button type="button" onClick={() => setNewQuestionType('vote')} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${newQuestionType === 'vote' ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>📊 投票</button>
+                          <button type="button" onClick={() => setNewQuestionType('quiz')} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${newQuestionType === 'quiz' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>📝 選擇</button>
                         </div>
 
                         <input type="text" value={newQuestionTitle} onChange={e => setNewQuestionTitle(e.target.value)} placeholder="輸入問題或主題..." className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-400 transition-colors" required />
@@ -1584,8 +1667,20 @@ export default function App() {
                           </div>
                         )}
 
-                        {newQuestionType === 'vote' && (
+                        {(newQuestionType === 'vote' || newQuestionType === 'quiz') && (
                           <div className="flex flex-col gap-2 animate-in fade-in zoom-in-95 duration-200">
+                             {newQuestionType === 'quiz' && (
+                               <div className="flex items-center justify-between bg-slate-100/50 p-2 rounded-lg border border-slate-200">
+                                 <span className="text-xs font-bold text-slate-600">允許學生複選</span>
+                                 <label className="flex items-center cursor-pointer">
+                                   <div className="relative">
+                                     <input type="checkbox" className="sr-only" checked={newIsMultiple} onChange={() => setNewIsMultiple(!newIsMultiple)} />
+                                     <div className={`block w-10 h-6 rounded-full transition-colors ${newIsMultiple ? 'bg-emerald-500' : 'bg-slate-300'}`}></div>
+                                     <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${newIsMultiple ? 'transform translate-x-4' : ''}`}></div>
+                                   </div>
+                                 </label>
+                               </div>
+                             )}
                              {newVoteOptions.map((opt, i) => (
                                 <input
                                   key={i}
@@ -1597,7 +1692,7 @@ export default function App() {
                                      setNewVoteOptions(newOpts);
                                   }}
                                   placeholder={`選項 ${i+1} ${i >= 2 ? '(選填)' : '(必填)'}`}
-                                  className="w-full bg-white border border-purple-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-purple-500 transition-colors"
+                                  className={`w-full bg-white border ${newQuestionType === 'quiz' ? 'border-emerald-200 focus:border-emerald-500' : 'border-purple-200 focus:border-purple-500'} rounded-lg px-3 py-2 text-sm outline-none transition-colors`}
                                   required={i < 2}
                                 />
                              ))}
@@ -1610,22 +1705,22 @@ export default function App() {
                         </div>
                       </div>
                     </div>
-                  </>
+                  </React.Fragment>
                 ) : (
-                  <>
-                    {/* 手機版：所有的區塊垂直排列 */}
-                    <div className={`shrink-0 p-5 rounded-2xl shadow-sm border-2 relative overflow-hidden transition-colors ${(activePollId && currentActivePollData) ? (currentActivePollData.type === 'vote' ? 'bg-white border-purple-100' : 'bg-white border-rose-100') : (currentTopic ? 'bg-white border-indigo-100' : 'bg-slate-50 border-slate-200')}`}>
-                      <div className={`absolute top-0 left-0 w-1.5 h-full ${(activePollId && currentActivePollData) ? (currentActivePollData.type === 'vote' ? 'bg-purple-500' : 'bg-rose-500') : (currentTopic ? 'bg-indigo-500' : 'bg-slate-300')}`}></div>
+                  <React.Fragment>
+                    {/* 手機版：原本的垂直排序 */}
+                    <div className={`shrink-0 p-5 rounded-2xl shadow-sm border-2 relative overflow-hidden transition-colors ${(activePollId && currentActivePollData) ? (currentActivePollData.type === 'vote' ? 'bg-white border-purple-100' : currentActivePollData.type === 'quiz' ? 'bg-white border-emerald-100' : 'bg-white border-rose-100') : (currentTopic ? 'bg-white border-indigo-100' : 'bg-slate-50 border-slate-200')}`}>
+                      <div className={`absolute top-0 left-0 w-1.5 h-full ${(activePollId && currentActivePollData) ? (currentActivePollData.type === 'vote' ? 'bg-purple-500' : currentActivePollData.type === 'quiz' ? 'bg-emerald-500' : 'bg-rose-500') : (currentTopic ? 'bg-indigo-500' : 'bg-slate-300')}`}></div>
                       <h3 className="text-sm font-bold text-slate-500 mb-3 flex items-center gap-2">
                         <MonitorPlay className="w-4 h-4" /> 大螢幕當前狀態
                       </h3>
                       
                       {activePollId && currentActivePollData ? (
                         <div className="animate-in fade-in flex flex-col gap-4">
-                          <span className={`inline-block px-2 py-1 text-[10px] font-bold rounded tracking-widest w-fit ${currentActivePollData.type === 'vote' ? 'bg-purple-100 text-purple-700' : 'bg-rose-100 text-rose-700'}`}>
-                            {currentActivePollData.type === 'vote' ? '📊 投票模式' : '⚔️ 拔河模式'}
+                          <span className={`inline-block px-2 py-1 text-[10px] font-bold rounded tracking-widest w-fit ${currentActivePollData.type === 'vote' ? 'bg-purple-100 text-purple-700' : currentActivePollData.type === 'quiz' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                            {currentActivePollData.type === 'vote' ? '📊 投票模式' : currentActivePollData.type === 'quiz' ? (currentActivePollData.isMultiple ? '📝 選擇模式 (複選)' : '📝 選擇模式 (單選)') : '⚔️ 拔河模式'}
                           </span>
-                          <div className={`text-lg font-black leading-snug break-words ${currentActivePollData.type === 'vote' ? 'text-purple-900' : 'text-rose-900'}`}>{String(currentActivePollData.title)}</div>
+                          <div className={`text-lg font-black leading-snug break-words ${currentActivePollData.type === 'vote' ? 'text-purple-900' : currentActivePollData.type === 'quiz' ? 'text-emerald-900' : 'text-rose-900'}`}>{String(currentActivePollData.title)}</div>
                           
                           {currentActivePollData.type === 'poll' ? (
                             <div className="flex justify-between text-xs font-bold bg-slate-50 p-2 rounded-lg border border-slate-100">
@@ -1637,26 +1732,26 @@ export default function App() {
                                {Array.isArray(currentActivePollData.options) ? currentActivePollData.options.map((opt, i) => (
                                   <div key={i} className="flex justify-between">
                                     <span className="text-slate-600 truncate pr-2">{String(opt)}</span>
-                                    <span className="text-purple-600 shrink-0">{pollVotes.counts[i.toString()] || 0} 票</span>
+                                    <span className={`${currentActivePollData.type === 'quiz' ? 'text-emerald-600' : 'text-purple-600'} shrink-0`}>{pollVotes.counts[i.toString()] || 0} 票</span>
                                   </div>
                                )) : <span className="text-slate-400 p-1">選項載入中...</span>}
                             </div>
                           )}
 
-                          <div className={`border rounded-xl p-3 text-center shadow-inner flex flex-col items-center justify-center ${currentActivePollData.type === 'vote' ? 'bg-purple-50 border-purple-100' : 'bg-rose-50 border-rose-100'}`}>
-                            <span className={`text-xs font-bold block mb-1 ${currentActivePollData.type === 'vote' ? 'text-purple-400' : 'text-rose-400'}`}>目前已收集 / 在線總人數</span>
+                          <div className={`border rounded-xl p-3 text-center shadow-inner flex flex-col items-center justify-center ${currentActivePollData.type === 'vote' ? 'bg-purple-50 border-purple-100' : currentActivePollData.type === 'quiz' ? 'bg-emerald-50 border-emerald-100' : 'bg-rose-50 border-rose-100'}`}>
+                            <span className={`text-xs font-bold block mb-1 ${currentActivePollData.type === 'vote' ? 'text-purple-400' : currentActivePollData.type === 'quiz' ? 'text-emerald-400' : 'text-rose-400'}`}>目前已收集 / 在線總人數</span>
                             <div className="flex items-baseline gap-2">
-                              <span className={`text-3xl font-black ${currentActivePollData.type === 'vote' ? 'text-purple-600' : 'text-rose-600'}`}>{pollVotes.total} <span className="text-sm">票</span></span>
+                              <span className={`text-3xl font-black ${currentActivePollData.type === 'vote' ? 'text-purple-600' : currentActivePollData.type === 'quiz' ? 'text-emerald-600' : 'text-rose-600'}`}>{pollVotes.total} <span className="text-sm">人參與</span></span>
                               <span className="text-slate-400 font-bold text-lg">/ {onlineCount} 人</span>
                             </div>
                           </div>
                           
                           {pollState === 'voting' ? (
-                            <button onClick={handleRevealPoll} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl text-sm transition-colors flex items-center justify-center gap-2 shadow-md mt-1">
-                              <Play className="w-4 h-4 fill-current"/> {currentActivePollData.type === 'vote' ? '開始結算 (觸發動畫並揭曉)' : '開始拔河 (觸發動畫並揭曉)'}
+                            <button onClick={handleRevealPoll} className="w-full mt-auto bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl text-sm transition-colors flex items-center justify-center gap-2 shadow-md mt-1">
+                              <Play className="w-4 h-4 fill-current"/> {currentActivePollData.type === 'poll' ? '開始拔河 (觸發動畫並揭曉)' : '開始結算 (觸發動畫並揭曉)'}
                             </button>
                           ) : (
-                            <button onClick={handleStopPoll} className={`w-full font-bold py-3 rounded-xl text-sm transition-colors flex items-center justify-center gap-2 mt-1 ${currentActivePollData.type === 'vote' ? 'bg-purple-100 hover:bg-purple-200 text-purple-700' : 'bg-rose-100 hover:bg-rose-200 text-rose-700'}`}>
+                            <button onClick={handleStopPoll} className={`w-full mt-auto font-bold py-3 rounded-xl text-sm transition-colors flex items-center justify-center gap-2 mt-1 ${currentActivePollData.type === 'vote' ? 'bg-purple-100 hover:bg-purple-200 text-purple-700' : currentActivePollData.type === 'quiz' ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700' : 'bg-rose-100 hover:bg-rose-200 text-rose-700'}`}>
                               <Square className="w-4 h-4 fill-current"/> 關閉結果與模式
                             </button>
                           )}
@@ -1683,94 +1778,114 @@ export default function App() {
                       </h3>
 
                       <div className="space-y-3 mb-4 relative z-10">
-                        {Array.isArray(agenda) && agenda.length === 0 ? <p className="text-center text-slate-400 text-sm py-2">題庫空空如也</p> : Array.isArray(agenda) && agenda.map((item, idx) => {
-                          if(!item) return null;
-                          const isActive = (item.type === 'text' && currentTopic === item.title) || ((item.type === 'poll' || item.type === 'vote') && activePollId === item.id);
-                          
-                          if (editingQuestionId === item.id) {
-                            return (
-                              <div key={item.id} className="flex flex-col gap-3 p-4 rounded-xl border bg-amber-50 border-amber-200 shadow-sm animate-in zoom-in-95">
-                                <span className="text-xs font-bold text-amber-600 mb-1 flex items-center gap-1"><Edit className="w-3 h-3"/> 編輯題目 ({item.type === 'text' ? '文字' : item.type === 'poll' ? '拔河' : '投票'})</span>
-                                <input type="text" value={editFormData.title || ''} onChange={e => setEditFormData({...editFormData, title: e.target.value})} className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-amber-400" placeholder="題目名稱" />
-                                
-                                {editFormData.type === 'poll' && (
-                                  <div className="flex gap-2">
-                                    <input type="text" value={editFormData.optA || ''} onChange={e => setEditFormData({...editFormData, optA: e.target.value})} className="flex-1 w-0 bg-white border border-blue-200 rounded-lg px-3 py-2 text-sm" placeholder="選項 A" />
-                                    <input type="text" value={editFormData.optB || ''} onChange={e => setEditFormData({...editFormData, optB: e.target.value})} className="flex-1 w-0 bg-white border border-rose-200 rounded-lg px-3 py-2 text-sm" placeholder="選項 B" />
-                                  </div>
-                                )}
-                                {editFormData.type === 'vote' && (
-                                  <div className="flex flex-col gap-2">
-                                     {[0, 1, 2, 3].map(i => (
-                                       <input key={i} type="text" value={editFormData.options?.[i] || ''} onChange={e => {
-                                           const newOpts = [...(editFormData.options || ['', '', '', ''])];
-                                           while(newOpts.length < 4) newOpts.push('');
-                                           newOpts[i] = e.target.value;
-                                           setEditFormData({...editFormData, options: newOpts});
-                                          }}
-                                         placeholder={`選項 ${i+1} ${i >= 2 ? '(選填)' : '(必填)'}`}
-                                         className="w-full bg-white border border-purple-200 rounded-lg px-3 py-2 text-sm"
-                                       />
-                                     ))}
-                                  </div>
-                                )}
+                        {Array.isArray(agenda) && agenda.length === 0 ? (
+                           <p className="text-center text-slate-400 text-sm py-2">題庫空空如也</p>
+                        ) : (
+                           Array.isArray(agenda) && agenda.map((item, idx) => {
+                            if(!item) return null;
+                            const isActive = (item.type === 'text' && currentTopic === item.title) || ((item.type === 'poll' || item.type === 'vote' || item.type === 'quiz') && activePollId === item.id);
+                            
+                            if (editingQuestionId === item.id) {
+                              return (
+                                <div key={item.id} className="flex flex-col gap-3 p-4 rounded-xl border bg-amber-50 border-amber-200 shadow-sm animate-in zoom-in-95">
+                                  <span className="text-xs font-bold text-amber-600 mb-1 flex items-center gap-1"><Edit className="w-3 h-3"/> 編輯題目 ({item.type === 'text' ? '文字' : item.type === 'poll' ? '拔河' : item.type === 'vote' ? '投票' : '選擇'})</span>
+                                  
+                                  <input type="text" value={editFormData.title || ''} onChange={e => setEditFormData({...editFormData, title: e.target.value})} className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-amber-400" placeholder="題目名稱" />
+                                  
+                                  {editFormData.type === 'poll' && (
+                                    <div className="flex gap-2">
+                                      <input type="text" value={editFormData.optA || ''} onChange={e => setEditFormData({...editFormData, optA: e.target.value})} className="flex-1 w-0 bg-white border border-blue-200 rounded-lg px-3 py-2 text-sm" placeholder="選項 A" />
+                                      <input type="text" value={editFormData.optB || ''} onChange={e => setEditFormData({...editFormData, optB: e.target.value})} className="flex-1 w-0 bg-white border border-rose-200 rounded-lg px-3 py-2 text-sm" placeholder="選項 B" />
+                                    </div>
+                                  )}
+                                  
+                                  {(editFormData.type === 'vote' || editFormData.type === 'quiz') && (
+                                    <div className="flex flex-col gap-2">
+                                       {editFormData.type === 'quiz' && (
+                                         <div className="flex items-center justify-between bg-white p-2 rounded-lg border border-emerald-200 mb-1">
+                                           <span className="text-xs font-bold text-slate-600">允許學生複選</span>
+                                           <label className="flex items-center cursor-pointer">
+                                             <div className="relative">
+                                               <input type="checkbox" className="sr-only" checked={editFormData.isMultiple || false} onChange={() => setEditFormData({...editFormData, isMultiple: !editFormData.isMultiple})} />
+                                               <div className={`block w-10 h-6 rounded-full transition-colors ${editFormData.isMultiple ? 'bg-emerald-500' : 'bg-slate-300'}`}></div>
+                                               <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${editFormData.isMultiple ? 'transform translate-x-4' : ''}`}></div>
+                                             </div>
+                                           </label>
+                                         </div>
+                                       )}
+                                       {[0, 1, 2, 3].map(i => (
+                                         <input key={i} type="text" value={editFormData.options?.[i] || ''} onChange={e => {
+                                             const newOpts = [...(editFormData.options || ['', '', '', ''])];
+                                             while(newOpts.length < 4) newOpts.push('');
+                                             newOpts[i] = e.target.value;
+                                             setEditFormData({...editFormData, options: newOpts});
+                                           }}
+                                           placeholder={`選項 ${i+1} ${i >= 2 ? '(選填)' : '(必填)'}`}
+                                           className={`w-full bg-white border ${editFormData.type === 'quiz' ? 'border-emerald-200' : 'border-purple-200'} rounded-lg px-3 py-2 text-sm`}
+                                         />
+                                       ))}
+                                    </div>
+                                  )}
 
-                                <div className="flex gap-2 mt-1">
-                                  <button onClick={cancelEditing} className="flex-1 bg-slate-200 text-slate-700 font-bold py-2.5 rounded-lg text-sm hover:bg-slate-300 transition-colors">取消</button>
-                                  <button onClick={saveEditing} className="flex-1 bg-amber-500 text-white font-bold py-2.5 rounded-lg text-sm hover:bg-amber-600 shadow-sm transition-colors">儲存變更</button>
+                                  <div className="flex gap-2 mt-1">
+                                    <button onClick={cancelEditing} className="flex-1 bg-slate-200 text-slate-700 font-bold py-2.5 rounded-lg text-sm hover:bg-slate-300 transition-colors">取消</button>
+                                    <button onClick={saveEditing} className="flex-1 bg-amber-50 text-white font-bold py-2.5 rounded-lg text-sm hover:bg-amber-600 shadow-sm transition-colors">儲存變更</button>
+                                  </div>
+                                </div>
+                              );
+                            }
+
+                            return (
+                            <div key={item.id || idx} className={`flex flex-col gap-2 p-3 rounded-xl border transition-all ${isActive ? (item.type === 'poll' ? 'bg-rose-50 border-rose-200 shadow-sm' : item.type === 'vote' ? 'bg-purple-50 border-purple-200 shadow-sm' : item.type === 'quiz' ? 'bg-emerald-50 border-emerald-200 shadow-sm' : 'bg-indigo-50 border-indigo-200 shadow-sm') : 'bg-slate-50 border-slate-100 hover:bg-white hover:shadow-sm group'}`}>
+                              <div className="flex items-start justify-between gap-2">
+                                <p className="text-sm font-bold text-slate-700 leading-tight break-words flex items-start gap-2">
+                                  <span className="shrink-0 text-base">{item.type === 'text' ? '💬' : item.type === 'poll' ? '⚔️' : item.type === 'vote' ? '📊' : '📝'}</span>
+                                  <span className="mt-0.5"><span className="text-slate-400 font-black mr-1">{idx + 1}.</span>{String(item.title || '')}</span>
+                                </p>
+                                <div className="flex flex-col gap-1 shrink-0 opacity-100 transition-opacity">
+                                  <button onClick={() => handleMoveQuestion(idx, -1)} disabled={idx === 0 || isActive} className="text-slate-400 hover:text-slate-700 disabled:opacity-30"><ChevronUp className="w-4 h-4"/></button>
+                                  <button onClick={() => handleMoveQuestion(idx, 1)} disabled={idx === agenda.length - 1 || isActive} className="text-slate-400 hover:text-slate-700 disabled:opacity-30"><ChevronDown className="w-4 h-4"/></button>
                                 </div>
                               </div>
-                            )
-                          }
 
-                          return (
-                          <div key={item.id || idx} className={`flex flex-col gap-2 p-3 rounded-xl border transition-all ${isActive ? (item.type === 'poll' ? 'bg-rose-50 border-rose-200 shadow-sm' : (item.type === 'vote' ? 'bg-purple-50 border-purple-200 shadow-sm' : 'bg-indigo-50 border-indigo-200 shadow-sm')) : 'bg-slate-50 border-slate-100 hover:bg-white hover:shadow-sm group'}`}>
-                            <div className="flex items-start justify-between gap-2">
-                              <p className="text-sm font-bold text-slate-700 leading-tight break-words flex items-start gap-2">
-                                <span className="shrink-0 text-base">{item.type === 'text' ? '💬' : (item.type === 'poll' ? '⚔️' : '📊')}</span>
-                                <span className="mt-0.5"><span className="text-slate-400 font-black mr-1">{idx + 1}.</span>{String(item.title || '')}</span>
-                              </p>
-                              <div className="flex flex-col gap-1 shrink-0 opacity-100 transition-opacity">
-                                <button onClick={() => handleMoveQuestion(idx, -1)} disabled={idx === 0 || isActive} className="text-slate-400 hover:text-slate-700 disabled:opacity-30"><ChevronUp className="w-4 h-4"/></button>
-                                <button onClick={() => handleMoveQuestion(idx, 1)} disabled={idx === agenda.length - 1 || isActive} className="text-slate-400 hover:text-slate-700 disabled:opacity-30"><ChevronDown className="w-4 h-4"/></button>
+                              {item.type === 'poll' && (
+                                <div className="flex text-xs font-medium bg-white rounded shadow-sm overflow-hidden border border-slate-100 mt-1">
+                                  <div className="flex-1 bg-blue-50 text-blue-700 px-2 py-1.5 truncate border-r border-slate-100">{String(item.optA || '')}</div>
+                                  <div className="flex-1 bg-rose-50 text-rose-700 px-2 py-1.5 truncate">{String(item.optB || '')}</div>
+                                </div>
+                              )}
+
+                              {(item.type === 'vote' || item.type === 'quiz') && Array.isArray(item.options) && (
+                                <div className="flex flex-col text-xs font-medium bg-white rounded shadow-sm overflow-hidden border border-slate-100 mt-1">
+                                  {item.type === 'quiz' && <div className="px-2 py-1 text-[10px] font-bold bg-emerald-50 text-emerald-600 border-b border-slate-100">模式: {item.isMultiple ? '複選' : '單選'}</div>}
+                                  {item.options.map((opt, oIdx) => (
+                                    <div key={oIdx} className="px-2 py-1 truncate border-b border-slate-100 last:border-b-0 bg-slate-50 text-slate-600">
+                                      {oIdx + 1}. {String(opt)}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
+                              <div className="flex justify-between items-center mt-1 pt-2 border-t border-slate-200/50">
+                                <div className="flex gap-1">
+                                  <button onClick={() => startEditing(item)} disabled={isActive} className="text-slate-400 hover:text-amber-500 p-1.5 disabled:opacity-30 transition-colors"><Edit className="w-4 h-4" /></button>
+                                  <button onClick={() => handleDeleteQuestion(idx)} disabled={isActive} className="text-slate-400 hover:text-rose-500 p-1.5 disabled:opacity-30 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                                </div>
+                                <button
+                                  onClick={() => {
+                                    if (isActive && (item.type === 'poll' || item.type === 'vote' || item.type === 'quiz')) handleStopPoll();
+                                    else if (isActive && item.type === 'text') handleSetTopic('');
+                                    else handlePublishQuestion(item);
+                                  }}
+                                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 shadow-sm ${isActive ? 'bg-slate-200 text-slate-700 hover:bg-slate-300' : (item.type === 'poll' ? 'bg-rose-100 text-rose-700 hover:bg-rose-200' : item.type === 'vote' ? 'bg-purple-100 text-purple-700 hover:bg-purple-200' : item.type === 'quiz' ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200')}`}
+                                >
+                                  {isActive ? <React.Fragment><Square className="w-3 h-3 fill-current"/> 取消發布</React.Fragment> : <React.Fragment><Play className="w-3 h-3 fill-current"/> {item.type === 'text' ? '發布話題' : '開放集結'}</React.Fragment>}
+                                </button>
                               </div>
                             </div>
-
-                            {item.type === 'poll' && (
-                              <div className="flex text-xs font-medium bg-white rounded shadow-sm overflow-hidden border border-slate-100 mt-1">
-                                <div className="flex-1 bg-blue-50 text-blue-700 px-2 py-1.5 truncate border-r border-slate-100">{String(item.optA || '')}</div>
-                                <div className="flex-1 bg-rose-50 text-rose-700 px-2 py-1.5 truncate">{String(item.optB || '')}</div>
-                              </div>
-                            )}
-
-                            {item.type === 'vote' && Array.isArray(item.options) && (
-                              <div className="flex flex-col text-xs font-medium bg-white rounded shadow-sm overflow-hidden border border-slate-100 mt-1">
-                                {item.options.map((opt, oIdx) => (
-                                  <div key={oIdx} className="px-2 py-1 truncate border-b border-slate-100 last:border-b-0 bg-slate-50 text-slate-600">
-                                    {oIdx + 1}. {String(opt)}
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-
-                            <div className="flex justify-between items-center mt-1 pt-2 border-t border-slate-200/50">
-                              <div className="flex gap-1">
-                                <button onClick={() => startEditing(item)} disabled={isActive} className="text-slate-400 hover:text-amber-500 p-1.5 disabled:opacity-30 transition-colors"><Edit className="w-4 h-4" /></button>
-                                <button onClick={() => handleDeleteQuestion(idx)} disabled={isActive} className="text-slate-400 hover:text-rose-500 p-1.5 disabled:opacity-30 transition-colors"><Trash2 className="w-4 h-4" /></button>
-                              </div>
-                              <button
-                                onClick={() => {
-                                  if (isActive && (item.type === 'poll' || item.type === 'vote')) handleStopPoll();
-                                  else if (isActive && item.type === 'text') handleSetTopic('');
-                                  else handlePublishQuestion(item);
-                                }}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 shadow-sm ${isActive ? 'bg-slate-200 text-slate-700 hover:bg-slate-300' : (item.type === 'poll' ? 'bg-rose-100 text-rose-700 hover:bg-rose-200' : (item.type === 'vote' ? 'bg-purple-100 text-purple-700 hover:bg-purple-200' : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'))}`}
-                              >
-                                {isActive ? <><Square className="w-3 h-3 fill-current"/> 取消發布</> : <><Play className="w-3 h-3 fill-current"/> {item.type === 'text' ? '發布話題' : '開放集結'}</>}
-                              </button>
-                            </div>
-                          </div>
-                        )})}
+                          );
+                        })
+                      )}
                       </div>
                     </div>
 
@@ -1781,6 +1896,7 @@ export default function App() {
                         <button type="button" onClick={() => setNewQuestionType('text')} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${newQuestionType === 'text' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>💬 文字</button>
                         <button type="button" onClick={() => setNewQuestionType('poll')} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${newQuestionType === 'poll' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>⚔️ 拔河</button>
                         <button type="button" onClick={() => setNewQuestionType('vote')} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${newQuestionType === 'vote' ? 'bg-white text-purple-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>📊 投票</button>
+                        <button type="button" onClick={() => setNewQuestionType('quiz')} className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${newQuestionType === 'quiz' ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>📝 選擇</button>
                       </div>
 
                       <input type="text" value={newQuestionTitle} onChange={e => setNewQuestionTitle(e.target.value)} placeholder="輸入問題或主題..." className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-indigo-400 transition-colors" required />
@@ -1792,8 +1908,20 @@ export default function App() {
                         </div>
                       )}
 
-                      {newQuestionType === 'vote' && (
+                      {(newQuestionType === 'vote' || newQuestionType === 'quiz') && (
                         <div className="flex flex-col gap-2 animate-in fade-in zoom-in-95 duration-200">
+                           {newQuestionType === 'quiz' && (
+                             <div className="flex items-center justify-between bg-slate-100/50 p-2 rounded-lg border border-slate-200">
+                               <span className="text-xs font-bold text-slate-600">允許學生複選</span>
+                               <label className="flex items-center cursor-pointer">
+                                 <div className="relative">
+                                   <input type="checkbox" className="sr-only" checked={newIsMultiple} onChange={() => setNewIsMultiple(!newIsMultiple)} />
+                                   <div className={`block w-10 h-6 rounded-full transition-colors ${newIsMultiple ? 'bg-emerald-500' : 'bg-slate-300'}`}></div>
+                                   <div className={`absolute left-1 top-1 bg-white w-4 h-4 rounded-full transition-transform ${newIsMultiple ? 'transform translate-x-4' : ''}`}></div>
+                                 </div>
+                               </label>
+                             </div>
+                           )}
                            {newVoteOptions.map((opt, i) => (
                               <input
                                 key={i}
@@ -1805,7 +1933,7 @@ export default function App() {
                                    setNewVoteOptions(newOpts);
                                 }}
                                 placeholder={`選項 ${i+1} ${i >= 2 ? '(選填)' : '(必填)'}`}
-                                className="w-full bg-white border border-purple-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-purple-500 transition-colors"
+                                className={`w-full bg-white border ${newQuestionType === 'quiz' ? 'border-emerald-200 focus:border-emerald-500' : 'border-purple-200 focus:border-purple-500'} rounded-lg px-3 py-2 text-sm outline-none transition-colors`}
                                 required={i < 2}
                               />
                            ))}
@@ -1828,12 +1956,12 @@ export default function App() {
                           <label className="text-xs font-bold text-slate-400 flex items-center gap-1"><Link className="w-3 h-3" /> 群組邀請連結設定</label>
                           <input type="text" value={localInviteLink} onChange={(e) => setLocalInviteLink(e.target.value)} placeholder="https://..." className="w-full bg-slate-900 text-slate-300 border border-slate-600 rounded-xl px-3 py-2 text-sm outline-none focus:border-indigo-500 transition-colors" />
                         </div>
-                        <button onClick={async () => await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', `${activeTeacherId}_settings`, 'global'), { showInviteModal: !showInviteModal, inviteLink: localInviteLink })} className={`w-full font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2 transition-all ${showInviteModal ? 'bg-white text-slate-900' : 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-md'}`}>
-                          {showInviteModal ? <><X className="w-4 h-4" /> 收回邀請視窗</> : <><Users className="w-4 h-4" /> 發送課後群組邀請 (凍結畫面)</>}
+                        <button onClick={async () => await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'settings', 'global'), { showInviteModal: !showInviteModal, inviteLink: localInviteLink })} className={`w-full font-bold py-3 rounded-xl text-sm flex items-center justify-center gap-2 transition-all ${showInviteModal ? 'bg-white text-slate-900' : 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-md'}`}>
+                          {showInviteModal ? <React.Fragment><X className="w-4 h-4" /> 收回邀請視窗</React.Fragment> : <React.Fragment><Users className="w-4 h-4" /> 發送課後群組邀請 (凍結畫面)</React.Fragment>}
                         </button>
                       </div>
                     </div>
-                  </>
+                  </React.Fragment>
                 )}
               </div>
             </div>
