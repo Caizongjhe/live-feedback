@@ -1243,8 +1243,8 @@ export default function App() {
                       <h2 className="text-2xl font-black text-white leading-snug drop-shadow-md break-words">{String(currentActivePollData.title || '')}</h2>
                       <p className="text-slate-400 mt-2 text-sm font-medium">
                         {currentActivePollData.type === 'quiz' && currentActivePollData.isMultiple 
-                          ? '請選擇一個或多個選項，這將影響大局。' 
-                          : '請選擇你的選項，這將影響大局。'}
+                          ? '請選擇一個或多個選項，表達你的看法。' 
+                          : '請選擇你的選項，表達你的看法。'}
                       </p>
                     </div>
 
