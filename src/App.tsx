@@ -1022,7 +1022,7 @@ export default function App() {
             {showEnlargedQR && activeStudentUrl && (
               <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-lg animate-in fade-in" onClick={() => setShowEnlargedQR(false)}>
                 <div className="bg-white/90 p-8 md:p-12 rounded-[3rem] shadow-[0_0_100px_rgba(255,255,255,0.2)] flex flex-col items-center" onClick={e => e.stopPropagation()}>
-                  <h2 className="text-3xl md:text-4xl font-black text-slate-800 mb-8 tracking-widest">掃描加入【您的專屬教室】</h2>
+                  <h2 className="text-3xl md:text-4xl font-black text-slate-800 mb-8 tracking-widest">掃描加入【即時雲端互動】</h2>
                   <div className="p-4 rounded-3xl shadow-inner bg-slate-100 border-8 border-slate-200">
                     <img src={`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(activeStudentUrl)}`} alt="Enlarged QR" className="w-64 h-64 md:w-96 md:h-96" />
                   </div>
