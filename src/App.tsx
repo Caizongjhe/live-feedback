@@ -91,8 +91,18 @@ export default function App() {
 
   // 系統與狀態
   const [currentTopic, setCurrentTopic] = useState('');
-  const [agenda, setAgenda] = useState([]); 
   const [activePoll, setActivePoll] = useState(null); 
+  
+  // 題庫組分頁狀態
+  const [questionBanks, setQuestionBanks] = useState([]);
+  const [activeBankId, setActiveBankId] = useState('');
+  const [tabModal, setTabModal] = useState({ isOpen: false, type: '', bankId: null, inputValue: '' });
+  
+  // 根據選擇的分頁，動態計算目前的 agenda
+  const agenda = useMemo(() => {
+    if (!questionBanks || questionBanks.length === 0) return [];
+    return questionBanks.find(b => b.id === activeBankId)?.agenda || [];
+  }, [questionBanks, activeBankId]);
   
   // 拔河與投票狀態
   const [activePollId, setActivePollId] = useState(null); 
@@ -132,7 +142,7 @@ export default function App() {
   const [verifyCountdown, setVerifyCountdown] = useState(0);
   const [simulatedEmailToast, setSimulatedEmailToast] = useState('');
 
-  // 新增/編輯題目表單狀態
+  // 新增/編輯題目表單狀態 (加入 isMultiple 支援選擇題)
   const [newQuestionType, setNewQuestionType] = useState('text'); 
   const [newQuestionTitle, setNewQuestionTitle] = useState('');
   const [newQuestionOptA, setNewQuestionOptA] = useState('');
@@ -254,13 +264,23 @@ export default function App() {
     return () => unsub();
   }, [user, authLoading, localInviteLink, activeTeacherId]);
 
-  // 4-1. 監聽教官個人題庫
+  // 4-1. 監聽教官個人題庫 (加入新舊資料表無縫接軌)
   useEffect(() => {
     if (authLoading || !user || !loggedTeacherEmail) return;
     const teacherRef = doc(db, 'artifacts', appId, 'public', 'data', 'teacher_accounts', loggedTeacherEmail);
     const unsub = onSnapshot(teacherRef, (docSnap) => {
       if (docSnap.exists()) {
-        setAgenda(Array.isArray(docSnap.data().agenda) ? docSnap.data().agenda : []);
+        const data = docSnap.data();
+        if (data.questionBanks && data.questionBanks.length > 0) {
+          setQuestionBanks(data.questionBanks);
+          setActiveBankId(data.activeBankId || data.questionBanks[0].id);
+        } else {
+          // 支援舊的 agenda 格式轉換，無縫轉移到新的分頁結構
+          const oldAgenda = Array.isArray(data.agenda) ? data.agenda : [];
+          const defaultBank = { id: 'default', name: '預設題庫', agenda: oldAgenda };
+          setQuestionBanks([defaultBank]);
+          setActiveBankId('default');
+        }
       }
     }, (error) => console.error("題庫讀取錯誤:", error));
     return () => unsub();
@@ -363,6 +383,76 @@ export default function App() {
     return Object.values(activeUsers).filter(lastActive => currentTime - lastActive < 35000).length;
   }, [activeUsers, currentTime]);
 
+  // 7. 實體簡報筆 (USB 藍牙接收器) 切換功能與自動清空
+  useEffect(() => {
+    if (!isTeacherAuthed || !activeTeacherId || !Array.isArray(agenda) || agenda.length === 0) return;
+
+    const handleKeyDown = async (e) => {
+      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+      const isNext = ['PageDown', 'ArrowRight', 'ArrowDown'].includes(e.key);
+      const isPrev = ['PageUp', 'ArrowLeft', 'ArrowUp'].includes(e.key);
+
+      if (!isNext && !isPrev) return;
+
+      e.preventDefault();
+
+      let currentIndex = -1;
+      for (let i = 0; i < agenda.length; i++) {
+        const item = agenda[i];
+        const isActive = (item.type === 'text' && currentTopic === item.title) || 
+                         ((item.type === 'poll' || item.type === 'vote' || item.type === 'quiz') && activePollId === item.id);
+        if (isActive) {
+          currentIndex = i;
+          break;
+        }
+      }
+
+      let targetIndex = -1;
+      if (isNext) {
+        if (currentIndex < agenda.length - 1) targetIndex = currentIndex + 1;
+      } else if (isPrev) {
+        if (currentIndex > 0) targetIndex = currentIndex - 1;
+      }
+
+      if (targetIndex !== -1) {
+        const targetItem = agenda[targetIndex];
+        
+        const msgsRef = collection(db, 'artifacts', appId, 'public', 'data', `${activeTeacherId}_messages`);
+        const msgsSnap = await getDocs(msgsRef);
+        msgsSnap.forEach(async (mDoc) => {
+          await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', `${activeTeacherId}_messages`, mDoc.id));
+        });
+        
+        const votesRef = collection(db, 'artifacts', appId, 'public', 'data', `${activeTeacherId}_votes`);
+        const votesSnap = await getDocs(votesRef);
+        votesSnap.forEach(async (vDoc) => {
+          await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', `${activeTeacherId}_votes`, vDoc.id));
+        });
+
+        const globalRef = doc(db, 'artifacts', appId, 'public', 'data', `${activeTeacherId}_settings`, 'global');
+        if (targetItem.type === 'text') {
+          await updateDoc(globalRef, { 
+            currentTopic: targetItem.title, 
+            activePollId: null, 
+            activePoll: null,
+            pollState: 'voting'
+          });
+        } else {
+          await updateDoc(globalRef, { 
+            activePollId: targetItem.id, 
+            currentTopic: '', 
+            pollState: 'voting', 
+            activePoll: targetItem 
+          });
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isTeacherAuthed, activeTeacherId, agenda, currentTopic, activePollId, db]);
+
   // ==========================================
   // 倒數計時器
   // ==========================================
@@ -381,6 +471,18 @@ export default function App() {
     }
     return () => clearTimeout(timer);
   }, [simulatedEmailToast]);
+
+  // ==========================================
+  // 題庫組分頁保存共用邏輯
+  // ==========================================
+  const saveAgenda = async (newAgenda) => {
+    if (!loggedTeacherEmail) return;
+    const updatedBanks = questionBanks.map(b => b.id === activeBankId ? { ...b, agenda: newAgenda } : b);
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'teacher_accounts', loggedTeacherEmail), { 
+      questionBanks: updatedBanks,
+      activeBankId: activeBankId
+    });
+  };
 
   // ==========================================
   // 互動邏輯
@@ -448,7 +550,7 @@ export default function App() {
   const cancelEditing = () => { setEditingQuestionId(null); setEditFormData({}); };
 
   const saveEditing = async () => {
-    if (!user || !loggedTeacherEmail || !Array.isArray(agenda) || !activeTeacherId) return;
+    if (!user || !loggedTeacherEmail || !activeTeacherId) return;
     if (!editFormData.title.trim()) return;
     if (editFormData.type === 'poll' && (!editFormData.optA.trim() || !editFormData.optB.trim())) return;
     
@@ -459,7 +561,7 @@ export default function App() {
     }
 
     const newAgenda = agenda.map(item => item.id === editingQuestionId ? finalData : item);
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'teacher_accounts', loggedTeacherEmail), { agenda: newAgenda });
+    await saveAgenda(newAgenda);
 
     if (activePollId === editingQuestionId) {
        const globalRef = doc(db, 'artifacts', appId, 'public', 'data', `${activeTeacherId}_settings`, 'global');
@@ -497,7 +599,7 @@ export default function App() {
     if(e) e.preventDefault();
     if (!user || !loggedTeacherEmail || !validateNewQuestion()) return;
     const newItem = buildNewItem();
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'teacher_accounts', loggedTeacherEmail), { agenda: [...(Array.isArray(agenda) ? agenda : []), newItem] });
+    await saveAgenda([...agenda, newItem]);
     resetForm();
   };
 
@@ -505,6 +607,8 @@ export default function App() {
     if(e) e.preventDefault();
     if (!user || !activeTeacherId || !validateNewQuestion()) return;
     const newItem = buildNewItem();
+    
+    await saveAgenda([...agenda, newItem]);
     
     const globalRef = doc(db, 'artifacts', appId, 'public', 'data', `${activeTeacherId}_settings`, 'global');
     if (newQuestionType === 'text') {
@@ -516,26 +620,40 @@ export default function App() {
   };
 
   const handleDeleteQuestion = async (index) => {
-    if (!user || !loggedTeacherEmail || !Array.isArray(agenda)) return;
+    if (!user || !loggedTeacherEmail) return;
     const newAgenda = agenda.filter((_, i) => i !== index);
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'teacher_accounts', loggedTeacherEmail), { agenda: newAgenda });
+    await saveAgenda(newAgenda);
   };
 
   const handleMoveQuestion = async (index, direction) => {
-    if (!user || !loggedTeacherEmail || !Array.isArray(agenda)) return;
+    if (!user || !loggedTeacherEmail) return;
     if ((direction === -1 && index === 0) || (direction === 1 && index === agenda.length - 1)) return;
     const newAgenda = [...agenda];
     const temp = newAgenda[index];
     newAgenda[index] = newAgenda[index + direction];
     newAgenda[index + direction] = temp;
-    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'teacher_accounts', loggedTeacherEmail), { agenda: newAgenda });
+    await saveAgenda(newAgenda);
   };
 
   const handlePublishQuestion = async (item) => {
     if (!user || !item || !activeTeacherId) return;
+    
+    // 發布新題目時，也自動清除白板與投票，確保不留舊資料
+    const msgsRef = collection(db, 'artifacts', appId, 'public', 'data', `${activeTeacherId}_messages`);
+    const msgsSnap = await getDocs(msgsRef);
+    msgsSnap.forEach(async (mDoc) => {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', `${activeTeacherId}_messages`, mDoc.id));
+    });
+    
+    const votesRef = collection(db, 'artifacts', appId, 'public', 'data', `${activeTeacherId}_votes`);
+    const votesSnap = await getDocs(votesRef);
+    votesSnap.forEach(async (vDoc) => {
+      await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', `${activeTeacherId}_votes`, vDoc.id));
+    });
+
     const globalRef = doc(db, 'artifacts', appId, 'public', 'data', `${activeTeacherId}_settings`, 'global');
     if (item.type === 'text') {
-      await updateDoc(globalRef, { currentTopic: item.title, activePollId: null, activePoll: null });
+      await updateDoc(globalRef, { currentTopic: item.title, activePollId: null, activePoll: null, pollState: 'voting' });
     } else if (item.type === 'poll' || item.type === 'vote' || item.type === 'quiz') {
       await updateDoc(globalRef, { activePollId: item.id, currentTopic: '', pollState: 'voting', activePoll: item });
     }
@@ -572,6 +690,71 @@ export default function App() {
     });
     setShowNewClassModal(false);
   };
+
+  // ==========================================
+  // 分頁彈跳視窗處理與切換邏輯
+  // ==========================================
+  const handleTabModalConfirm = async () => {
+    const { type, bankId, inputValue } = tabModal;
+    const trimmedInput = inputValue.trim();
+
+    if (type === 'add') {
+      if (!trimmedInput) return;
+      const newBank = { id: 'bank_' + Date.now(), name: trimmedInput, agenda: [] };
+      const updatedBanks = [...questionBanks, newBank];
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'teacher_accounts', loggedTeacherEmail), {
+        questionBanks: updatedBanks,
+        activeBankId: newBank.id
+      });
+    } else if (type === 'rename') {
+      if (!trimmedInput || trimmedInput === questionBanks.find(b => b.id === bankId)?.name) return;
+      const updatedBanks = questionBanks.map(b => b.id === bankId ? { ...b, name: trimmedInput } : b);
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'teacher_accounts', loggedTeacherEmail), {
+        questionBanks: updatedBanks
+      });
+    } else if (type === 'delete') {
+      if (questionBanks.length <= 1) return;
+      const updatedBanks = questionBanks.filter(b => b.id !== bankId);
+      const newActiveId = activeBankId === bankId ? updatedBanks[0].id : activeBankId;
+      await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'teacher_accounts', loggedTeacherEmail), {
+        questionBanks: updatedBanks,
+        activeBankId: newActiveId
+      });
+    }
+    setTabModal({ isOpen: false, type: '', bankId: null, inputValue: '' });
+  };
+
+  const handleSwitchBank = async (bankId) => {
+    if (bankId === activeBankId) return;
+    await updateDoc(doc(db, 'artifacts', appId, 'public', 'data', 'teacher_accounts', loggedTeacherEmail), {
+      activeBankId: bankId
+    });
+  };
+
+  const renderQuestionBanksTabs = () => (
+    <div className="flex items-center gap-2 overflow-x-auto pb-2 mb-3 border-b border-slate-100 min-h-[3.5rem] scrollbar-hide">
+      {questionBanks.map(bank => (
+        <div 
+          key={bank.id} 
+          onClick={() => handleSwitchBank(bank.id)}
+          className={`shrink-0 flex items-center gap-2 px-3 py-1.5 rounded-t-lg border-b-2 transition-colors cursor-pointer ${activeBankId === bank.id ? 'border-indigo-500 bg-indigo-50/80 text-indigo-700 font-bold' : 'border-transparent text-slate-500 hover:bg-slate-100 hover:text-slate-700 font-medium'}`}
+        >
+          <span className="text-sm truncate max-w-[120px]">{bank.name}</span>
+          {activeBankId === bank.id && (
+            <div className="flex items-center gap-1 ml-1 bg-white/50 rounded-md p-0.5">
+              <button onClick={(e) => { e.stopPropagation(); setTabModal({ isOpen: true, type: 'rename', bankId: bank.id, inputValue: bank.name }); }} className="text-indigo-400 hover:text-indigo-600 p-0.5 rounded hover:bg-indigo-100" title="重新命名"><Edit className="w-3 h-3" /></button>
+              {questionBanks.length > 1 && (
+                <button onClick={(e) => { e.stopPropagation(); setTabModal({ isOpen: true, type: 'delete', bankId: bank.id, inputValue: '' }); }} className="text-rose-400 hover:text-rose-600 p-0.5 rounded hover:bg-rose-100" title="刪除"><Trash2 className="w-3 h-3" /></button>
+              )}
+            </div>
+          )}
+        </div>
+      ))}
+      <button onClick={() => setTabModal({ isOpen: true, type: 'add', bankId: null, inputValue: '新題庫組' })} className="shrink-0 flex items-center gap-1 px-3 py-1.5 text-sm font-bold text-slate-400 hover:text-indigo-500 hover:bg-indigo-50 rounded-t-lg transition-colors ml-1">
+        <Plus className="w-4 h-4" /> 新增題庫
+      </button>
+    </div>
+  );
 
   // ==========================================
   // 教官登入註冊邏輯
@@ -677,11 +860,16 @@ export default function App() {
       await setDoc(docRef, {
         email: authEmail.toLowerCase(), password: authPassword, 
         secQuestion: authSecQuestion, secAnswer: authSecAnswer,
-        agenda: [
-          { id: 'q_1', type: 'text', title: '大家對這個議題有什麼看法？' },
-          { id: 'q_2', type: 'poll', title: '面對重大國家危機，你的選擇是？', optA: '挺身而出保護家園', optB: '專注自己生活就好' },
-          { id: 'q_3', type: 'vote', title: '您認為未來最重要的防衛重點？', options: ['網路資訊安全', '無人機防禦與運用', '全民防衛動員意識', '後備軍事系統優化'] }
-        ],
+        questionBanks: [{
+          id: 'default',
+          name: '預設題庫',
+          agenda: [
+            { id: 'q_1', type: 'text', title: '大家對這個議題有什麼看法？' },
+            { id: 'q_2', type: 'poll', title: '面對重大國家危機，你的選擇是？', optA: '挺身而出保護家園', optB: '專注自己生活就好' },
+            { id: 'q_3', type: 'vote', title: '您認為未來最重要的防衛重點？', options: ['網路資訊安全', '無人機防禦與運用', '全民防衛動員意識', '後備軍事系統優化'] }
+          ]
+        }],
+        activeBankId: 'default',
         createdAt: Date.now()
       });
       setShowVerifyModal(false);
@@ -962,6 +1150,8 @@ export default function App() {
         }
         .animate-tug-struggle { animation: tug-struggle 4s ease-in-out both; }
         .tug-slide-slow { transition: width 2s ease-out, left 3s cubic-bezier(0.22, 1, 0.36, 1); }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
       `}</style>
 
       {/* 頂部切換列 */}
@@ -1035,7 +1225,7 @@ export default function App() {
             {showEnlargedQR && activeStudentUrl && (
               <div className="absolute inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-lg animate-in fade-in" onClick={() => setShowEnlargedQR(false)}>
                 <div className="bg-white/90 p-8 md:p-12 rounded-[3rem] shadow-[0_0_100px_rgba(255,255,255,0.2)] flex flex-col items-center" onClick={e => e.stopPropagation()}>
-                  <h2 className="text-3xl md:text-4xl font-black text-slate-800 mb-8 tracking-widest">掃描加入【即時雲端互動】</h2>
+                  <h2 className="text-3xl md:text-4xl font-black text-slate-800 mb-8 tracking-widest">掃描加入【您的專屬教室】</h2>
                   <div className="p-4 rounded-3xl shadow-inner bg-slate-100 border-8 border-slate-200">
                     <img src={`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${encodeURIComponent(activeStudentUrl)}`} alt="Enlarged QR" className="w-64 h-64 md:w-96 md:h-96" />
                   </div>
@@ -1243,8 +1433,8 @@ export default function App() {
                       <h2 className="text-2xl font-black text-white leading-snug drop-shadow-md break-words">{String(currentActivePollData.title || '')}</h2>
                       <p className="text-slate-400 mt-2 text-sm font-medium">
                         {currentActivePollData.type === 'quiz' && currentActivePollData.isMultiple 
-                          ? '請選擇一個或多個選項，表達你的看法。' 
-                          : '請選擇你的選項，表達你的看法。'}
+                          ? '請選擇一個或多個選項，這將影響大局。' 
+                          : '請選擇你的選項，這將影響大局。'}
                       </p>
                     </div>
 
@@ -1469,7 +1659,7 @@ export default function App() {
                         </h3>
                         
                         {activePollId && currentActivePollData ? (
-                          <div className="animate-in fade-in flex flex-col h-full">
+                          <div className="animate-in fade-in flex flex-col flex-1">
                             <span className={`inline-block px-2 py-1 text-[10px] font-bold rounded mb-2 tracking-widest w-fit ${currentActivePollData.type === 'vote' ? 'bg-purple-100 text-purple-700' : currentActivePollData.type === 'quiz' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
                               {currentActivePollData.type === 'vote' ? '📊 投票模式' : currentActivePollData.type === 'quiz' ? (currentActivePollData.isMultiple ? '📝 選擇模式 (複選)' : '📝 選擇模式 (單選)') : '⚔️ 拔河模式'}
                             </span>
@@ -1514,7 +1704,7 @@ export default function App() {
                           </div>
                         ) : currentTopic ? (
                           <div className="animate-in fade-in flex flex-col flex-1">
-                            <span className="inline-block px-2 py-1 bg-indigo-100 text-indigo-700 text-[10px] font-bold rounded mb-2 tracking-widest w-fit">💬 留言模式</span>
+                            <span className="inline-block px-2 py-1 bg-indigo-100 text-indigo-700 text-[10px] font-bold rounded tracking-widest w-fit">💬 留言模式</span>
                             <div className="text-lg font-black text-indigo-900 mb-4 leading-tight min-h-[3rem] break-words">{String(currentTopic)}</div>
                             <div className="flex-1 min-h-[1rem]"></div>
                             <button onClick={() => handleSetTopic('')} className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-xl text-sm transition-colors mt-auto">
@@ -1552,6 +1742,8 @@ export default function App() {
                           <span className="flex items-center gap-2">📋 課堂題庫腳本</span>
                           <span className="text-xs font-normal text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">共 {Array.isArray(agenda) ? agenda.length : 0} 題</span>
                         </h3>
+                        
+                        {renderQuestionBanksTabs()}
 
                         <div className="flex-1 overflow-y-auto space-y-3 mb-1 relative z-10 pr-2">
                           {Array.isArray(agenda) && agenda.length === 0 ? (
@@ -1605,14 +1797,14 @@ export default function App() {
                                       <button onClick={saveEditing} className="flex-1 bg-amber-500 text-white font-bold py-2.5 rounded-lg text-sm hover:bg-amber-600 shadow-sm transition-colors">儲存變更</button>
                                     </div>
                                   </div>
-                                )
+                                );
                               }
 
                               return (
-                              <div key={item.id || idx} className={`flex flex-col gap-2 p-3 rounded-xl border transition-all ${isActive ? (item.type === 'poll' ? 'bg-rose-50 border-rose-200 shadow-sm' : (item.type === 'vote' ? 'bg-purple-50 border-purple-200 shadow-sm' : 'bg-indigo-50 border-indigo-200 shadow-sm')) : 'bg-slate-50 border-slate-100 hover:bg-white hover:shadow-sm group'}`}>
+                              <div key={item.id || idx} className={`flex flex-col gap-2 p-3 rounded-xl border transition-all ${isActive ? (item.type === 'poll' ? 'bg-rose-50 border-rose-200 shadow-sm' : item.type === 'vote' ? 'bg-purple-50 border-purple-200 shadow-sm' : item.type === 'quiz' ? 'bg-emerald-50 border-emerald-200 shadow-sm' : 'bg-indigo-50 border-indigo-200 shadow-sm') : 'bg-slate-50 border-slate-100 hover:bg-white hover:shadow-sm group'}`}>
                                 <div className="flex items-start justify-between gap-2">
                                   <p className="text-sm font-bold text-slate-700 leading-tight break-words flex items-start gap-2">
-                                    <span className="shrink-0 text-base">{item.type === 'text' ? '💬' : (item.type === 'poll' ? '⚔️' : '📊')}</span>
+                                    <span className="shrink-0 text-base">{item.type === 'text' ? '💬' : item.type === 'poll' ? '⚔️' : item.type === 'vote' ? '📊' : '📝'}</span>
                                     <span className="mt-0.5"><span className="text-slate-400 font-black mr-1">{idx + 1}.</span>{String(item.title || '')}</span>
                                   </p>
                                   <div className="flex flex-col gap-1 shrink-0 opacity-100 lg:opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1650,7 +1842,7 @@ export default function App() {
                                       else if (isActive && item.type === 'text') handleSetTopic('');
                                       else handlePublishQuestion(item);
                                     }}
-                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 shadow-sm ${isActive ? 'bg-slate-200 text-slate-700 hover:bg-slate-300' : (item.type === 'poll' ? 'bg-rose-100 text-rose-700 hover:bg-rose-200' : (item.type === 'vote' ? 'bg-purple-100 text-purple-700 hover:bg-purple-200' : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'))}`}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 shadow-sm ${isActive ? 'bg-slate-200 text-slate-700 hover:bg-slate-300' : (item.type === 'poll' ? 'bg-rose-100 text-rose-700 hover:bg-rose-200' : item.type === 'vote' ? 'bg-purple-100 text-purple-700 hover:bg-purple-200' : item.type === 'quiz' ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200')}`}
                                   >
                                     {isActive ? <React.Fragment><Square className="w-3 h-3 fill-current"/> 取消發布</React.Fragment> : <React.Fragment><Play className="w-3 h-3 fill-current"/> {item.type === 'text' ? '發布話題' : '開放集結'}</React.Fragment>}
                                   </button>
@@ -1761,7 +1953,7 @@ export default function App() {
                           </div>
                           
                           {pollState === 'voting' ? (
-                            <button onClick={handleRevealPoll} className="w-full mt-auto bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl text-sm transition-colors flex items-center justify-center gap-2 shadow-md mt-1">
+                            <button onClick={handleRevealPoll} className="w-full mt-auto bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl text-sm transition-colors flex items-center justify-center gap-2 shadow-md">
                               <Play className="w-4 h-4 fill-current"/> {currentActivePollData.type === 'poll' ? '開始拔河 (觸發動畫並揭曉)' : '開始結算 (觸發動畫並揭曉)'}
                             </button>
                           ) : (
@@ -1775,7 +1967,7 @@ export default function App() {
                           <span className="inline-block px-2 py-1 bg-indigo-100 text-indigo-700 text-[10px] font-bold rounded tracking-widest w-fit">💬 留言模式</span>
                           <div className="text-lg font-black text-indigo-900 leading-tight min-h-[3rem] break-words">{String(currentTopic)}</div>
                           <div className="flex-1 min-h-[1rem]"></div>
-                          <button onClick={() => handleSetTopic('')} className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-xl text-sm transition-colors mt-1">
+                          <button onClick={() => handleSetTopic('')} className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3 rounded-xl text-sm transition-colors mt-auto">
                             撤下話題
                           </button>
                         </div>
@@ -1791,6 +1983,8 @@ export default function App() {
                         <span className="flex items-center gap-2">📋 課堂題庫腳本</span>
                         <span className="text-xs font-normal text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">共 {Array.isArray(agenda) ? agenda.length : 0} 題</span>
                       </h3>
+
+                      {renderQuestionBanksTabs()}
 
                       <div className="space-y-3 relative z-10">
                         {Array.isArray(agenda) && agenda.length === 0 ? (
@@ -1820,7 +2014,7 @@ export default function App() {
                                          <div className="flex items-center justify-between bg-white p-2 rounded-lg border border-emerald-200 mb-1">
                                            <span className="text-xs font-bold text-slate-600">允許學生複選</span>
                                            <label className="relative inline-flex items-center cursor-pointer">
-                                             <input type="checkbox" className="sr-only peer" checked={editFormData.isMultiple || false} onChange={() => setEditFormData({...editFormData, isMultiple: !editFormData.isMultiple})} />
+                                             <input type="checkbox" className="sr-only" checked={editFormData.isMultiple || false} onChange={() => setEditFormData({...editFormData, isMultiple: !editFormData.isMultiple})} />
                                              <div className="w-8 h-4 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-500"></div>
                                            </label>
                                          </div>
@@ -1974,6 +2168,37 @@ export default function App() {
                 )}
               </div>
             </div>
+
+            {/* 題庫組管理 Modal (新增/編輯/刪除 防呆視窗) */}
+            {tabModal.isOpen && (
+              <div className="absolute inset-0 z-50 flex items-center justify-center p-6 animate-in fade-in duration-300 bg-slate-900/60 backdrop-blur-sm">
+                <div className="bg-white p-8 rounded-3xl shadow-2xl max-w-sm w-full text-center flex flex-col items-center">
+                  <div className={`w-16 h-16 rounded-full flex items-center justify-center mb-4 ${tabModal.type === 'delete' ? 'bg-rose-100 text-rose-600' : 'bg-indigo-100 text-indigo-600'}`}>
+                    {tabModal.type === 'delete' ? <Trash2 className="w-8 h-8" /> : <Edit className="w-8 h-8" />}
+                  </div>
+                  <h2 className="text-2xl font-black text-slate-800 mb-2">
+                    {tabModal.type === 'add' ? '新增題庫組' : tabModal.type === 'rename' ? '重新命名題庫組' : '刪除題庫組？'}
+                  </h2>
+                  {tabModal.type === 'delete' ? (
+                    <p className="text-slate-600 font-medium mb-8 text-sm">確定要刪除此題庫組嗎？裡面的題目將一併被永久刪除。</p>
+                  ) : (
+                    <input 
+                      type="text" 
+                      value={tabModal.inputValue} 
+                      onChange={e => setTabModal({...tabModal, inputValue: e.target.value})}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-3 outline-none focus:border-indigo-500 mb-8"
+                      autoFocus
+                    />
+                  )}
+                  <div className="flex gap-3 w-full">
+                    <button onClick={() => setTabModal({...tabModal, isOpen: false})} className="flex-1 bg-slate-200 text-slate-700 font-bold py-3 rounded-xl hover:bg-slate-300 transition-colors">取消</button>
+                    <button onClick={handleTabModalConfirm} className={`flex-1 text-white font-bold py-3 rounded-xl shadow-md transition-colors ${tabModal.type === 'delete' ? 'bg-rose-600 hover:bg-rose-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}>
+                      確定
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* 清空留言確認 Modal (防呆視窗) */}
             {showClearModal && (
